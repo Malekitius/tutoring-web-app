@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f7f5f0">
+    <title>Кабинет репетитора — финансы</title>
+    <link rel="stylesheet" href="/static/app.css?v=2">
+    <link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
+    <link rel="stylesheet" href="/static/finances.css?v=2">
+    <link rel="stylesheet" href="/static/assistant-widget.css?v=3">
+    <script src="/static/vendor/katex/katex.min.js" defer></script>
+    <script src="/static/vendor/katex/auto-render.min.js" defer></script>
+    <script src="/static/finances.js?v=2" defer></script>
+    <script src="/static/assistant-widget.js?v=4" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand"><span class="brand-mark" aria-hidden="true">∑</span><div><strong>Кабинет<br>репетитора</strong><small>Личное пространство</small></div></div>
+        <div class="sidebar-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
+        <nav class="nav" aria-label="Разделы">
+          <a class="nav-item" href="/"><span aria-hidden="true">▦</span> Ученики</a>
+          <a class="nav-item" href="/schedule/"><span aria-hidden="true">▤</span> Расписание</a>
+          <a class="nav-item" href="/assignments/"><span aria-hidden="true">◇</span> Задания</a>
+          <a class="nav-item active" href="/finances/" aria-current="page"><span aria-hidden="true">◫</span> Финансы</a>
+          <a class="nav-item" href="/data/"><span aria-hidden="true">▣</span> Данные</a>
+        </nav>
+        <div class="sidebar-bottom"><div class="local-badge"><span class="local-dot"></span> Данные на этом компьютере</div><p>Поступления учитываются отдельно от стоимости проведённых занятий. Остаток показывает аванс или долг каждого ученика.</p></div>
+      </aside>
+
+      <main class="workspace finance-workspace">
+        <header class="topbar">
+          <div><div class="eyebrow">ДЕНЕЖНЫЙ УЧЁТ</div><h1>Финансы</h1><p class="topbar-subtitle">Поступления, проведённые занятия и остатки учеников.</p></div>
+          <button id="add-payment" class="button button-primary" type="button"><span aria-hidden="true">＋</span> Добавить внесение</button>
+        </header>
+
+        <section class="finance-period" aria-label="Период отчёта">
+          <div class="period-tabs"><button class="period-tab" data-mode="week" type="button">Неделя</button><button class="period-tab active" data-mode="month" type="button">Месяц</button><button class="period-tab" data-mode="custom" type="button">Свой период</button></div>
+          <div id="custom-dates" class="custom-dates" hidden><label>С <input id="period-start" type="date"></label><label>По <input id="period-end" type="date"></label><button id="apply-period" class="button button-soft" type="button">Показать</button></div>
+          <strong id="period-label" class="period-label"></strong>
+        </section>
+        <div class="finance-export-actions" aria-label="Экспорт и загрузка финансов">
+          <a id="finance-export-csv" class="button button-soft" href="/api/finances/export/csv">↓ CSV за период</a>
+          <a class="button button-soft" href="/api/finances/export">↓ Финансовый JSON</a>
+          <button id="finance-import-open" class="button button-secondary" type="button">↑ Загрузить JSON</button>
+        </div>
+
+        <section class="finance-overview" aria-label="Итоги периода">
+          <div class="finance-stat primary-stat"><span>Получено денег</span><strong id="received-value">0 ₽</strong><small id="received-detail">0 внесений</small></div>
+          <div class="finance-stat"><span>Начислено за проведённые</span><strong id="earned-value">0 ₽</strong><small id="earned-detail">0 занятий</small></div>
+          <div class="finance-stat"><span>План по расписанию</span><strong id="forecast-value">0 ₽</strong><small id="forecast-detail">Если все запланированные занятия состоятся</small></div>
+        </section>
+
+        <section class="finance-section" aria-labelledby="balances-title"><div class="finance-section-head"><div><div class="eyebrow">АВАНСЫ И ДОЛГИ</div><h2 id="balances-title">Остатки учеников</h2></div><p>Баланс = начальный остаток + внесения − проведённые занятия</p></div><div id="student-balances" class="balance-grid" aria-live="polite"></div></section>
+
+        <section class="finance-section" aria-labelledby="payments-title"><div class="finance-section-head"><div><div class="eyebrow">ИСТОРИЯ ПОСТУПЛЕНИЙ</div><h2 id="payments-title">Внесения за период</h2></div><span id="payments-count" class="count-pill">0</span></div><div id="payment-list" class="payment-list" aria-live="polite"></div></section>
+      </main>
+    </div>
+
+    <dialog id="payment-dialog" class="editor-dialog finance-dialog" aria-labelledby="payment-dialog-title">
+      <form id="payment-form"><div class="dialog-header"><div><div class="eyebrow">ПОСТУПЛЕНИЕ</div><h2 id="payment-dialog-title">Добавить внесение</h2></div><button class="icon-button payment-close" type="button" aria-label="Закрыть">×</button></div>
+        <div class="dialog-fields"><label class="field"><span>Ученик</span><select id="payment-student" required></select></label><div class="field-row"><label class="field"><span>Сумма, ₽</span><input id="payment-amount" type="number" min="1" max="100000000" step="1" required placeholder="Например, 5000"></label><label class="field"><span>Дата внесения</span><input id="payment-date" type="date" required></label></div><label class="field"><span>Комментарий <small>необязательно</small></span><input id="payment-note" maxlength="500" placeholder="Например, оплата за два занятия"></label><p class="finance-form-help">Вся сумма зачислится на баланс ученика и может покрыть несколько занятий.</p></div>
+        <div id="payment-error" class="form-error" role="alert" hidden></div><div class="dialog-actions"><button id="delete-payment" class="button button-danger" type="button" hidden>Удалить</button><span class="action-spacer"></span><button class="button button-secondary payment-close" type="button">Отмена</button><button class="button button-primary" type="submit">Сохранить</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="opening-dialog" class="editor-dialog finance-dialog" aria-labelledby="opening-title">
+      <form id="opening-form"><div class="dialog-header"><div><div class="eyebrow">СТАРТ УЧЁТА</div><h2 id="opening-title">Начальный остаток</h2></div><button class="icon-button opening-close" type="button" aria-label="Закрыть">×</button></div>
+        <div class="dialog-fields"><p id="opening-student-name" class="finance-form-help"></p><label class="field"><span>Остаток на момент начала учёта, ₽</span><input id="opening-amount" type="number" min="-100000000" max="100000000" step="1" required></label><p class="finance-form-help">Введите уже оплаченный аванс. Для долга используйте отрицательное число. Начальный остаток влияет на баланс, но не входит в отчёт «Получено денег».</p></div>
+        <div id="opening-error" class="form-error" role="alert" hidden></div><div class="dialog-actions"><button class="button button-secondary opening-close" type="button">Отмена</button><button class="button button-primary" type="submit">Сохранить остаток</button></div>
+      </form>
+    </dialog>
+    <dialog id="finance-import-dialog" class="editor-dialog finance-dialog" aria-labelledby="finance-import-title">
+      <form id="finance-import-form"><div class="dialog-header"><div><div class="eyebrow">ФИНАНСОВЫЕ ДАННЫЕ</div><h2 id="finance-import-title">Загрузить JSON</h2></div><button class="icon-button finance-import-close" type="button" aria-label="Закрыть">×</button></div>
+        <div class="dialog-fields"><p class="finance-form-help">Файл добавит новые внесения и обновит совпадающие по ID записи, цены, начальные остатки и начисления. Занятия и ученики должны уже быть в приложении. Сначала появится предпросмотр.</p><label class="field"><span>Финансовый файл</span><input id="finance-import-file" type="file" accept=".json,application/json" required></label><div id="finance-import-preview" class="finance-import-preview" hidden></div></div>
+        <div id="finance-import-error" class="form-error" role="alert" hidden></div><div class="dialog-actions"><button class="button button-secondary finance-import-close" type="button">Отмена</button><button id="finance-import-submit" class="button button-primary" type="submit" disabled>Загрузить данные</button></div>
+      </form>
+    </dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    {% include "assistant-widget.html" %}
+  </body>
+</html>

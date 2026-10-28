@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f7f5f0">
+    <title>Кабинет репетитора — данные</title>
+    <link rel="stylesheet" href="/static/app.css?v=4">
+    <link rel="stylesheet" href="/static/data.css?v=1">
+    <link rel="stylesheet" href="/static/assistant-widget.css?v=3">
+    <script src="/static/data.js?v=1" defer></script>
+    <script src="/static/assistant-widget.js?v=4" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand"><span class="brand-mark" aria-hidden="true">∑</span><div><strong>Кабинет<br>репетитора</strong><small>Личное пространство</small></div></div>
+        <div class="sidebar-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
+        <nav class="nav" aria-label="Разделы">
+          <a class="nav-item" href="/"><span aria-hidden="true">▦</span> Ученики</a>
+          <a class="nav-item" href="/schedule/"><span aria-hidden="true">▤</span> Расписание</a>
+          <a class="nav-item" href="/assignments/"><span aria-hidden="true">◇</span> Задания</a>
+          <a class="nav-item" href="/finances/"><span aria-hidden="true">◫</span> Финансы</a>
+          <a class="nav-item active" href="/data/" aria-current="page"><span aria-hidden="true">▣</span> Данные</a>
+        </nav>
+        <div class="sidebar-bottom"><div class="local-badge"><span class="local-dot"></span> Данные на этом компьютере</div><p>Резервные копии сохраняются в файл, который вы выбираете сами.</p></div>
+      </aside>
+      <main class="workspace data-workspace">
+        <header class="topbar"><div><div class="eyebrow">СОХРАННОСТЬ ДАННЫХ</div><h1>Данные</h1><p class="topbar-subtitle">Копия приложения для переноса и восстановления.</p></div></header>
+        <div class="data-grid">
+          <section class="data-card"><span class="data-card-icon" aria-hidden="true">↓</span><h2>Создать резервную копию</h2><p>В архив войдут ученики, предметы, темы, расписание, заметки, библиотека задач, подборки, загруженные работы и финансовые записи.</p><a class="button button-primary" href="/api/data/backup/export">Скачать копию</a><small>Данные подключения к помощнику в архив не входят.</small></section>
+          <section class="data-card"><span class="data-card-icon" aria-hidden="true">↑</span><h2>Восстановить из копии</h2><p>Все текущие данные приложения будут заменены содержимым архива. Перед заменой приложение сохранит отдельную копию текущих данных на этом компьютере.</p><button id="restore-open" class="button button-secondary" type="button">Выбрать архив</button></section>
+        </div>
+        <p class="data-footnote">Для таблицы поступлений за выбранный период и переноса только финансов используйте кнопки в разделе <a href="/finances/">«Финансы»</a>.</p>
+      </main>
+    </div>
+    <dialog id="restore-dialog" class="editor-dialog restore-dialog" aria-labelledby="restore-title">
+      <form id="restore-form"><div class="dialog-header"><div><div class="eyebrow">РЕЗЕРВНАЯ КОПИЯ</div><h2 id="restore-title">Восстановить данные</h2></div><button class="icon-button restore-close" type="button" aria-label="Закрыть">×</button></div>
+        <div class="dialog-fields"><label class="field"><span>Архив приложения</span><input id="restore-file" type="file" accept=".zip,application/zip" required></label><div id="restore-preview" class="restore-preview" hidden></div></div>
+        <div id="restore-error" class="form-error" role="alert" hidden></div><div class="dialog-actions"><button class="button button-secondary restore-close" type="button">Отмена</button><button id="restore-submit" class="button button-danger" type="submit" disabled>Заменить текущие данные</button></div>
+      </form>
+    </dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    {% include "assistant-widget.html" %}
+  </body>
+</html>

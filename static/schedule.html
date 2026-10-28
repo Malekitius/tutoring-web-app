@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f7f5f0">
+    <title>Кабинет репетитора — расписание</title>
+    <link rel="stylesheet" href="/static/app.css?v=3">
+    <link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
+    <link rel="stylesheet" href="/static/assistant-widget.css?v=3">
+    <link rel="stylesheet" href="/static/schedule.css?v=8">
+    <script src="/static/vendor/katex/katex.min.js" defer></script>
+    <script src="/static/vendor/katex/auto-render.min.js" defer></script>
+    <script src="/static/schedule.js?v=9" defer></script>
+    <script src="/static/assistant-widget.js?v=4" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand"><span class="brand-mark" aria-hidden="true">∑</span><div><strong>Кабинет<br>репетитора</strong><small>Личное пространство</small></div></div>
+        <div class="sidebar-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
+        <nav class="nav" aria-label="Разделы">
+          <a class="nav-item" href="/"><span aria-hidden="true">▦</span> Ученики</a>
+          <a class="nav-item active" href="/schedule/" aria-current="page"><span aria-hidden="true">▤</span> Расписание</a>
+          <a class="nav-item" href="/assignments/"><span aria-hidden="true">◇</span> Задания</a>
+          <a class="nav-item" href="/finances/"><span aria-hidden="true">◫</span> Финансы</a>
+          <a class="nav-item" href="/data/"><span aria-hidden="true">▣</span> Данные</a>
+        </nav>
+        <div class="sidebar-bottom"><div class="local-badge"><span class="local-dot"></span> Данные на этом компьютере</div><p>Запланируйте занятия на неделю. Переносы и отмены сохраняются отдельно от регулярной серии.</p></div>
+      </aside>
+
+      <main class="workspace schedule-workspace">
+        <header class="topbar">
+          <div><div class="eyebrow">УЧЁБНЫЙ ПРОЦЕСС</div><h1>Расписание</h1><p class="topbar-subtitle">Все занятия недели — перед глазами.</p></div>
+          <button id="add-lesson" class="button button-primary" type="button"><span aria-hidden="true">＋</span> Добавить занятие</button>
+        </header>
+
+        <section class="schedule-toolbar" aria-label="Навигация по календарю">
+          <div class="week-navigation"><button id="prev-week" class="icon-button" type="button" aria-label="Предыдущая неделя">‹</button><button id="today-week" class="button button-soft" type="button">Сегодня</button><button id="next-week" class="icon-button" type="button" aria-label="Следующая неделя">›</button><h2 id="week-label"></h2></div>
+          <div class="schedule-summary"><span id="lesson-total">0 занятий</span><span class="summary-divider"></span><span id="hours-total">0 часов</span></div>
+        </section>
+
+        <section class="calendar-panel" aria-label="Недельное расписание">
+          <div id="calendar" class="calendar-grid" aria-live="polite"></div>
+        </section>
+        <p class="schedule-hint">Нажмите на свободное время, чтобы добавить занятие. Перетащите карточку на другой день или час; нажмите на неё, чтобы изменить статус и детали.</p>
+      </main>
+    </div>
+
+    <dialog id="lesson-dialog" class="editor-dialog schedule-dialog" aria-labelledby="lesson-dialog-title">
+      <form id="lesson-form">
+        <div class="dialog-header"><div><div class="eyebrow">РАСПИСАНИЕ</div><h2 id="lesson-dialog-title">Новое занятие</h2></div><button class="icon-button dialog-close" type="button" aria-label="Закрыть">×</button></div>
+        <div class="dialog-fields">
+          <div class="field-row"><label class="field"><span>Ученик</span><select id="lesson-student" required></select></label><label class="field"><span>Предмет</span><select id="lesson-subject"></select></label></div>
+          <div class="field-row"><label class="field"><span>Дата</span><input id="lesson-date" type="date" required></label><label class="field"><span>Начало</span><input id="lesson-time" type="time" step="300" required></label></div>
+          <div class="field-row"><label class="field"><span>Длительность, мин</span><input id="lesson-duration" type="number" min="15" max="240" step="5" required></label><label id="status-field" class="field" hidden><span>Статус</span><select id="lesson-status"><option value="planned">Запланировано</option><option value="completed">Состоялось</option><option value="cancelled">Не состоялось</option></select></label></div>
+          <div id="outcome-actions" class="outcome-actions" hidden><span>Итог занятия</span><div><button id="outcome-completed" class="button outcome-done" type="button">✓ Состоялось</button><button id="outcome-cancelled" class="button outcome-cancelled" type="button">× Не состоялось</button></div></div>
+          <label id="repeat-field" class="check-field"><input id="lesson-repeat" type="checkbox"><span><strong>Повторять каждую неделю</strong><small>Можно будет менять отдельное занятие или всю серию.</small></span></label>
+          <section id="comments-section" class="comments-section" aria-labelledby="comments-title" hidden>
+            <div class="comments-heading"><h3 id="comments-title">Комментарии</h3><span id="comments-count"></span></div>
+            <div id="comments-list" class="comments-list"></div>
+            <div class="comment-composer">
+              <label class="field"><span>Новый комментарий</span><textarea id="comment-body" maxlength="5000" placeholder="Тема, цель или напоминание"></textarea></label>
+              <div class="field-row"><label class="field"><span>Приоритет</span><select id="comment-priority"><option value="none">Без приоритета</option><option value="low">Низкий</option><option value="medium">Средний</option><option value="high">Высокий</option></select></label><label class="field"><span>Дедлайн</span><input id="comment-due-date" type="date"></label></div>
+              <div id="comment-error" class="form-error" role="alert" hidden></div>
+              <div class="comment-actions"><button id="comment-cancel-edit" class="button button-secondary" type="button" hidden>Отмена</button><button id="comment-save" class="button button-soft" type="button">Добавить комментарий</button></div>
+            </div>
+          </section>
+          <a id="lesson-assignments-link" class="button button-soft" href="/assignments/" hidden>◇ Задания для этого занятия</a>
+          <div id="series-actions" class="series-actions" hidden><button id="edit-series" class="text-button" type="button">Изменить будущие занятия</button><button id="end-series" class="text-button danger-text" type="button">Завершить серию</button></div>
+        </div>
+        <div id="lesson-error" class="form-error" role="alert" hidden></div>
+        <div class="dialog-actions"><button id="delete-lesson" class="button button-danger" type="button" hidden>Удалить занятие</button><span class="action-spacer"></span><button class="button button-secondary dialog-close" type="button">Отмена</button><button class="button button-primary" type="submit">Сохранить</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="series-dialog" class="editor-dialog schedule-dialog" aria-labelledby="series-title">
+      <form id="series-form">
+        <div class="dialog-header"><div><div class="eyebrow">ЕЖЕНЕДЕЛЬНОЕ ЗАНЯТИЕ</div><h2 id="series-title">Изменить будущие занятия</h2></div><button class="icon-button series-close" type="button" aria-label="Закрыть">×</button></div>
+        <div class="dialog-fields"><p id="series-from" class="series-note"></p><div class="field-row"><label class="field"><span>Ученик</span><select id="series-student" required></select></label><label class="field"><span>Предмет</span><select id="series-subject"></select></label></div><div class="field-row"><label class="field"><span>День недели</span><select id="series-weekday"><option value="0">Понедельник</option><option value="1">Вторник</option><option value="2">Среда</option><option value="3">Четверг</option><option value="4">Пятница</option><option value="5">Суббота</option><option value="6">Воскресенье</option></select></label><label class="field"><span>Начало</span><input id="series-time" type="time" step="300" required></label></div><label class="field"><span>Длительность, мин</span><input id="series-duration" type="number" min="15" max="240" step="5" required></label></div>
+        <div id="series-error" class="form-error" role="alert" hidden></div>
+        <div class="dialog-actions"><button class="button button-secondary series-close" type="button">Отмена</button><button class="button button-primary" type="submit">Сохранить серию</button></div>
+      </form>
+    </dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    {% include "assistant-widget.html" %}
+  </body>
+</html>

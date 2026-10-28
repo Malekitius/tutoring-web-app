@@ -1,0 +1,62 @@
+name: Installer smoke
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+jobs:
+  install:
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONIOENCODING: utf-8
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Test assistant
+        run: python manage.py test assistant
+      - name: Test assignments
+        run: python manage.py test assignments
+      - name: Test installer default paths
+        run: python manage.py test config.test_install.InstallerTests.test_default_paths_for_macos_and_windows
+      - name: Test installer update
+        run: python manage.py test config.test_install.InstallerTests.test_install_and_update_keep_database_outside_code
+      - name: Test installer data directory guard
+        run: python manage.py test config.test_install.InstallerTests.test_update_rejects_changed_data_directory
+      - name: Test installer unrelated target guard
+        run: python manage.py test config.test_install.InstallerTests.test_unrelated_target_is_not_overwritten
+      - name: Test Windows launcher
+        run: python manage.py test config.test_install.InstallerTests.test_windows_launcher_uses_installed_venv
+      - name: Test finances
+        run: python manage.py test finances
+      - name: Test schedule
+        run: python manage.py test schedule
+      - name: Test students
+        run: python manage.py test students
+      - name: Install and check a fresh copy
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          root = Path(os.environ['RUNNER_TEMP'])
+          target, data = root / 'TutorCabinet', root / 'TutorData'
+          subprocess.run([sys.executable, 'install.py', '--target', str(target), '--data', str(data)], check=True)
+          executable = target / '.venv' / ('Scripts/python.exe' if sys.platform == 'win32' else 'bin/python')
+          environment = os.environ.copy()
+          environment['TUTOR_DATA_DIR'] = str(data)
+          subprocess.run([str(executable), 'manage.py', 'check'], cwd=target, env=environment, check=True)
+          assert (data / 'db.sqlite3').is_file()
+          assert not (target / 'data').exists()
+          PY

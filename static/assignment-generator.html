@@ -1,0 +1,36 @@
+<div id="generator-section" class="generator-section" hidden>
+  <p class="assistant-notice">Задачи создаются как черновик. Проверьте условия и решения, затем сохраните их в подборку или библиотеку.</p>
+<section class="assistant-panel" aria-labelledby="generate-heading">
+            <div class="assistant-panel-head"><span class="assistant-panel-icon">∑</span><div><h2 id="generate-heading">Создать задачи</h2><p>Сначала черновик, затем сохранение по вашему решению.</p></div></div>
+            <form id="generate-form" class="assistant-form">
+              <label class="field"><span>Ученик</span><select name="student_id" required></select></label>
+              <label class="field"><span>Предмет</span><input name="subject" list="subject-suggestions" maxlength="80" value="Математика" required></label>
+              <div class="field-row"><label class="field"><span>Тема</span><input name="topic" required maxlength="160" placeholder="Например, дроби"></label><label class="field"><span>Подтема</span><input name="subtopic" maxlength="160" placeholder="Необязательно"></label></div>
+              <fieldset class="generator-counts"><legend>Количество задач по сложности <small>всего от 1 до 20</small></legend><div class="generator-count-grid">
+                <label class="field"><span>Базовая</span><input name="count_1" type="number" min="0" max="20" value="3" required></label>
+                <label class="field"><span>Средняя</span><input name="count_2" type="number" min="0" max="20" value="0" required></label>
+                <label class="field"><span>Повышенная</span><input name="count_3" type="number" min="0" max="20" value="0" required></label>
+                <label class="field"><span>Олимпиадная</span><input name="count_4" type="number" min="0" max="20" value="0" required></label>
+              </div><small id="generator-total">Всего: 3 задачи</small></fieldset>
+              <label class="field"><span>Пожелания</span><textarea name="wishes" maxlength="1000" placeholder="Например: две задачи на применение и одна на закрепление"></textarea></label>
+              <button class="button button-primary" type="submit">Создать черновик</button>
+              <div id="generate-loading" class="generator-loading" role="status" aria-live="polite" hidden><span class="generator-loading-icon" aria-hidden="true">∑</span><span id="generate-loading-text">Создаю задачи…</span></div>
+              <div id="generate-error" class="form-error" role="alert" hidden></div>
+            </form>
+          </section>
+        <section id="draft-section" class="assistant-panel assistant-drafts" hidden aria-labelledby="draft-heading">
+          <div class="assistant-panel-head"><span class="assistant-panel-icon">◇</span><div><h2 id="draft-heading">Черновик задач</h2><p>Исправьте условия и решения перед сохранением.</p></div></div>
+          <div id="draft-progress" class="generator-loading" role="status" aria-live="polite" hidden><span class="generator-loading-icon" aria-hidden="true">∑</span><span id="draft-progress-text"></span></div>
+          <p id="draft-generation-error" class="form-error" role="alert" hidden></p>
+          <button id="generate-resume" class="button button-secondary" type="button" hidden>Продолжить генерацию</button>
+          <div id="draft-list"></div>
+          <p id="draft-edit-hint" class="draft-edit-hint" hidden>Сохраните изменения условия или решения, чтобы сохранить задачи.</p>
+          <form id="accept-form" class="assistant-save">
+            <label class="field"><span>Куда сохранить</span><select name="destination"><option value="lesson">В новую подборку на урок</option><option value="homework">В новую домашнюю работу</option><option value="library">Только в библиотеку</option></select></label>
+            <label class="field" id="worksheet-title-field"><span>Название подборки</span><input name="title" maxlength="160" required></label>
+            <button class="button button-primary" type="submit">Сохранить задачи</button>
+          </form>
+          <div id="accept-error" class="form-error" role="alert" hidden></div>
+          <div id="accept-success" class="assistant-success" hidden></div>
+        </section>
+</div>

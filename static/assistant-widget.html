@@ -1,0 +1,14 @@
+<aside id="assistant-widget" class="helper-widget" aria-label="Помощник">
+  <section id="helper-panel" class="helper-panel" aria-labelledby="helper-title" hidden>
+    <header class="helper-head"><div><span class="helper-eyebrow">ВСЕГДА ПОД РУКОЙ</span><h2 id="helper-title">Помощник</h2></div><button id="helper-close" type="button" aria-label="Закрыть помощника">×</button></header>
+    <form id="helper-form">
+      <label><span>Ваш вопрос</span><textarea name="question" maxlength="2000" required></textarea></label>
+      <button class="helper-submit" type="submit">Спросить <span aria-hidden="true">↗</span></button>
+    </form>
+    <p id="helper-error" class="helper-error" role="alert" hidden></p>
+    <div id="helper-loading" class="helper-loading" role="status" aria-live="polite" hidden><span class="helper-loading-icon" aria-hidden="true">∑</span><span>Готовлю ответ…</span></div>
+    <div id="helper-answer" class="helper-answer" role="status" hidden></div>
+    <footer class="helper-footer"><span id="helper-status">Проверяем подключение…</span><button id="helper-connect" type="button">Подключить ChatGPT</button><button id="helper-disconnect" type="button" hidden>Отключить</button></footer>
+  </section>
+  <button id="helper-toggle" class="helper-toggle" type="button" aria-label="Открыть помощника" aria-controls="helper-panel" aria-expanded="false"><span class="helper-pet" aria-hidden="true"><i></i><i></i><b></b></span><span class="helper-toggle-label">Спросить</span></button>
+</aside>

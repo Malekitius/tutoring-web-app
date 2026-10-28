@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f7f5f0">
+    <title>Кабинет репетитора — ученики</title>
+    <link rel="stylesheet" href="/static/app.css?v=4">
+    <link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
+    <link rel="stylesheet" href="/static/assistant-widget.css?v=3">
+    <script src="/static/vendor/katex/katex.min.js" defer></script>
+    <script src="/static/vendor/katex/auto-render.min.js" defer></script>
+    <script src="/static/app.js?v=7" defer></script>
+    <script src="/static/assistant-widget.js?v=4" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">∑</span>
+          <div><strong>Кабинет<br>репетитора</strong><small>Личное пространство</small></div>
+        </div>
+        <div class="sidebar-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
+        <nav class="nav" aria-label="Разделы">
+          <a class="nav-item active" href="/" aria-current="page"><span aria-hidden="true">▦</span> Ученики</a>
+          <a class="nav-item" href="/schedule/"><span aria-hidden="true">▤</span> Расписание</a>
+          <a class="nav-item" href="/assignments/"><span aria-hidden="true">◇</span> Задания</a>
+          <a class="nav-item" href="/finances/"><span aria-hidden="true">◫</span> Финансы</a>
+          <a class="nav-item" href="/data/"><span aria-hidden="true">▣</span> Данные</a>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="local-badge"><span class="local-dot"></span> Данные на этом компьютере</div>
+          <p>Карточки учеников связаны с расписанием, заданиями и финансами.</p>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <div class="eyebrow">УЧЁБНЫЙ ПРОЦЕСС</div>
+            <h1>Ученики</h1>
+            <p class="topbar-subtitle">Цели, предметы и динамика каждого ученика в одном месте.</p>
+          </div>
+          <button id="add-student" class="button button-primary" type="button"><span aria-hidden="true">＋</span> Добавить ученика</button>
+        </header>
+
+        <div class="content-grid">
+          <section class="list-panel" aria-labelledby="list-heading">
+            <div class="panel-heading">
+              <div><h2 id="list-heading">Мои ученики</h2><span id="student-count" class="count-pill">0</span></div>
+            </div>
+            <label class="search-box">
+              <span aria-hidden="true">⌕</span>
+              <input id="search" type="search" placeholder="Найти по имени или классу" autocomplete="off" aria-label="Найти ученика">
+            </label>
+            <div id="student-list" class="student-list" aria-live="polite"></div>
+          </section>
+
+          <section id="detail-panel" class="detail-panel" aria-live="polite"></section>
+        </div>
+      </main>
+    </div>
+
+    <dialog id="editor-dialog" class="editor-dialog" aria-labelledby="dialog-title">
+      <form id="editor-form">
+        <div class="dialog-header">
+          <div><div class="eyebrow">КАРТОЧКА УЧЕНИКА</div><h2 id="dialog-title"></h2></div>
+          <button id="close-dialog" class="icon-button" type="button" aria-label="Закрыть">×</button>
+        </div>
+        <div id="dialog-fields" class="dialog-fields"></div>
+        <div id="form-error" class="form-error" role="alert" hidden></div>
+        <div class="dialog-actions">
+          <button id="cancel-dialog" class="button button-secondary" type="button">Отмена</button>
+          <button id="save-dialog" class="button button-primary" type="submit">Сохранить</button>
+        </div>
+      </form>
+    </dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    {{ subject_icons|json_script:"subject-icons-data" }}
+    {% include "assistant-widget.html" %}
+  </body>
+</html>

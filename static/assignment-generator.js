@@ -1,0 +1,260 @@
+(() => {
+const $ = selector => document.querySelector(selector);
+const state = {drafts: [], studentId: null, meta: null, pendingGeneration: null, generating: false};
+const difficultyNames = {1: 'Базовая', 2: 'Средняя', 3: 'Повышенная', 4: 'Олимпиадная'};
+
+function esc(value = '') { return String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[char])); }
+function cookie(name) { return document.cookie.split('; ').find(part => part.startsWith(`${name}=`))?.split('=')[1] || ''; }
+function showError(selector, message) { const el = $(selector); el.textContent = message || ''; el.hidden = !message; }
+async function api(path, method = 'GET', payload) {
+  const options = {method, headers: {'Accept': 'application/json'}};
+  if (payload !== undefined) {
+    options.headers['Content-Type'] = 'application/json';
+    options.headers['X-CSRFToken'] = decodeURIComponent(cookie('csrftoken'));
+    options.body = JSON.stringify(payload);
+  }
+  const response = await fetch(path, options);
+  let data;
+  try { data = await response.json(); } catch { throw new Error('Сервер вернул некорректный ответ'); }
+  if (!response.ok) throw new Error(data.error || `Ошибка ${response.status}`);
+  return data;
+}
+function busy(form, value) { form.querySelector('button[type="submit"]').disabled = value; }
+function renderMath(root) {
+  if (typeof window.renderMathInElement === 'function') window.renderMathInElement(root, {
+    delimiters: [
+      {left: '$$', right: '$$', display: true},
+      {left: '\\[', right: '\\]', display: true},
+      {left: '\\(', right: '\\)', display: false},
+      {left: '$', right: '$', display: false},
+    ], throwOnError: false, trust: false, strict: 'ignore'
+  });
+}
+
+function renderDrafts() {
+  const root = $('#draft-list');
+  root.innerHTML = state.drafts.map((item, index) => `<article class="assistant-draft" data-index="${index}">
+    <div class="assistant-draft-head"><strong>Задача ${index + 1} · ${esc(difficultyNames[item.difficulty])}</strong><button class="text-button" type="button" data-remove="${index}">Убрать</button></div>
+    <label class="field"><span>Название</span><input name="title" value="${esc(item.title)}" maxlength="160" required></label>
+    <div class="assistant-draft-rendered" data-part="prompt">
+      <div class="assistant-draft-part-head"><span>Условие</span><button class="text-button" type="button" data-edit="prompt">Изменить условие</button></div>
+      <div class="assistant-draft-preview" data-preview="prompt">${esc(item.prompt)}</div>
+      <div class="assistant-draft-editor" hidden><label class="field"><span>LaTeX-код условия</span><textarea name="prompt" maxlength="10000" required>${esc(item.prompt)}</textarea></label><div class="assistant-draft-actions"><button class="button button-primary" type="button" data-save-edit="prompt">Сохранить</button><button class="button button-secondary" type="button" data-cancel-edit="prompt">Отмена</button></div></div>
+    </div>
+    <div class="assistant-draft-rendered" data-part="answer">
+      <div class="assistant-draft-part-head"><span>Решение и ответ</span><button class="text-button" type="button" data-edit="answer">Изменить решение</button></div>
+      <div class="assistant-draft-preview" data-preview="answer">${esc(item.answer)}</div>
+      <div class="assistant-draft-editor" hidden><label class="field"><span>LaTeX-код решения</span><textarea name="answer" maxlength="10000">${esc(item.answer)}</textarea></label><div class="assistant-draft-actions"><button class="button button-primary" type="button" data-save-edit="answer">Сохранить</button><button class="button button-secondary" type="button" data-cancel-edit="answer">Отмена</button></div></div>
+    </div>
+  </article>`).join('');
+  root.querySelectorAll('.assistant-draft-preview').forEach(renderMath);
+  $('#draft-section').hidden = !state.drafts.length && !state.pendingGeneration;
+  syncEditState();
+}
+
+$('#draft-list').addEventListener('input', event => {
+  const article = event.target.closest('.assistant-draft');
+  if (!article || event.target.name !== 'title') return;
+  const index = Number(article.dataset.index);
+  state.drafts[index].title = event.target.value;
+});
+
+function syncEditState() {
+  const editing = Boolean($('#draft-list .assistant-draft-editor:not([hidden])'));
+  $('#accept-form button[type="submit"]').disabled = editing || state.generating;
+  $('#draft-edit-hint').hidden = !editing;
+}
+
+function closeEditor(part) {
+  part.querySelector('.assistant-draft-editor').hidden = true;
+  part.querySelector('.assistant-draft-preview').hidden = false;
+  part.querySelector('[data-edit]').hidden = false;
+  syncEditState();
+}
+
+$('#draft-list').addEventListener('click', event => {
+  const button = event.target.closest('[data-remove]');
+  if (button) {
+    state.drafts.splice(Number(button.dataset.remove), 1);
+    renderDrafts();
+    return;
+  }
+  const edit = event.target.closest('[data-edit]');
+  const save = event.target.closest('[data-save-edit]');
+  const cancel = event.target.closest('[data-cancel-edit]');
+  const action = edit || save || cancel;
+  if (!action) return;
+  const part = action.closest('.assistant-draft-rendered');
+  const article = action.closest('.assistant-draft');
+  const field = part.dataset.part;
+  const textarea = part.querySelector('textarea');
+  if (edit) {
+    textarea.value = state.drafts[Number(article.dataset.index)][field];
+    part.querySelector('.assistant-draft-preview').hidden = true;
+    edit.hidden = true;
+    part.querySelector('.assistant-draft-editor').hidden = false;
+    syncEditState();
+    textarea.focus();
+  } else if (save) {
+    if (field === 'prompt' && !textarea.value.trim()) {
+      textarea.setCustomValidity('Введите условие задачи.');
+      textarea.reportValidity();
+      return;
+    }
+    textarea.setCustomValidity('');
+    const value = textarea.value;
+    state.drafts[Number(article.dataset.index)][field] = value;
+    const preview = part.querySelector('.assistant-draft-preview');
+    preview.textContent = value;
+    renderMath(preview);
+    closeEditor(part);
+  } else {
+    textarea.setCustomValidity('');
+    textarea.value = state.drafts[Number(article.dataset.index)][field];
+    closeEditor(part);
+  }
+});
+
+$('#draft-list').addEventListener('input', event => {
+  if (event.target.name === 'prompt') event.target.setCustomValidity('');
+});
+
+function difficultyCounts(form) {
+  return Object.fromEntries([1, 2, 3, 4].map(level => [String(level), Number(form.elements[`count_${level}`].value)]));
+}
+
+function updateTotal() {
+  const total = Object.values(difficultyCounts($('#generate-form'))).reduce((sum, count) => sum + count, 0);
+  $('#generator-total').textContent = `Всего: ${total} ${total === 1 ? 'задача' : total >= 2 && total <= 4 ? 'задачи' : 'задач'}`;
+}
+$('#generate-form').addEventListener('input', event => { if (event.target.name?.startsWith('count_')) updateTotal(); });
+
+async function runGeneration() {
+  const form = $('#generate-form');
+  const pending = state.pendingGeneration;
+  if (!pending || state.generating) return;
+  state.generating = true;
+  busy(form, true);
+  form.setAttribute('aria-busy', 'true');
+  $('#generate-loading').hidden = false;
+  $('#draft-progress').hidden = false;
+  $('#generate-resume').hidden = true;
+  showError('#generate-error', '');
+  showError('#draft-generation-error', '');
+  $('#draft-list').inert = true;
+  syncEditState();
+  renderDrafts();
+  $('#draft-section').scrollIntoView({behavior: 'smooth', block: 'start'});
+  try {
+    while (pending.nextIndex < pending.plan.length) {
+      const level = pending.plan[pending.nextIndex];
+      const progress = `Создаю задачу ${pending.nextIndex + 1} из ${pending.plan.length} · ${difficultyNames[level].toLowerCase()}`;
+      $('#generate-loading-text').textContent = progress;
+      $('#draft-progress-text').textContent = progress;
+      const result = await api('/api/assistant/generate', 'POST', {
+        ...pending.payload, difficulty: level, count: 1,
+        existing_tasks: state.drafts.map(item => item.prompt.slice(0, 500)),
+      });
+      if (!Array.isArray(result.exercises) || result.exercises.length !== 1 || result.student_id !== state.studentId) {
+        throw new Error('Сервер вернул неверное количество задач.');
+      }
+      state.drafts.push(result.exercises[0]);
+      pending.nextIndex++;
+      $('#accept-form').hidden = false;
+      renderDrafts();
+    }
+    state.pendingGeneration = null;
+    $('#draft-heading').textContent = `Черновик задач · ${state.drafts.length}`;
+  } catch (error) {
+    const message = `Создано ${pending.nextIndex} из ${pending.plan.length}. ${error.message}`;
+    showError('#draft-generation-error', message);
+    $('#generate-resume').hidden = false;
+  } finally {
+    $('#generate-loading').hidden = true;
+    $('#draft-progress').hidden = true;
+    $('#draft-list').inert = false;
+    form.removeAttribute('aria-busy');
+    state.generating = false;
+    busy(form, false);
+    syncEditState();
+  }
+}
+
+$('#generate-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const counts = difficultyCounts(form);
+  const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  if (!Object.values(counts).every(Number.isInteger) || total < 1 || total > 20) {
+    showError('#generate-error', 'Выберите от 1 до 20 задач суммарно по всем сложностям.');
+    return;
+  }
+  const payload = Object.fromEntries(new FormData(form).entries());
+  for (const level of [1, 2, 3, 4]) delete payload[`count_${level}`];
+  state.drafts = [];
+  state.studentId = payload.student_id;
+  state.meta = payload;
+  state.pendingGeneration = {
+    payload,
+    plan: [1, 2, 3, 4].flatMap(level => Array(counts[String(level)]).fill(level)),
+    nextIndex: 0,
+  };
+  $('#accept-form [name="title"]').value = `${payload.topic} · ${payload.subject}`;
+  $('#accept-form').hidden = true;
+  $('#draft-heading').textContent = 'Черновик задач';
+  $('#accept-success').hidden = true;
+  renderDrafts();
+  await runGeneration();
+});
+
+$('#generate-resume').addEventListener('click', runGeneration);
+
+$('#accept-form [name="destination"]').addEventListener('change', event => {
+  const libraryOnly = event.target.value === 'library';
+  $('#worksheet-title-field').hidden = libraryOnly;
+  $('#accept-form [name="title"]').required = !libraryOnly;
+});
+$('#accept-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!state.drafts.length || !state.studentId || state.generating) return;
+  if ($('#draft-list .assistant-draft-editor:not([hidden])')) {
+    showError('#accept-error', 'Сначала сохраните изменения условия или решения.');
+    return;
+  }
+  showError('#accept-error', '');
+  busy(form, true);
+  try {
+    const result = await api('/api/assistant/accept', 'POST', {
+      student_id: state.studentId, destination: form.elements.destination.value,
+      title: form.elements.title.value, exercises: state.drafts,
+    });
+    state.drafts = [];
+    state.pendingGeneration = null;
+    $('#draft-list').innerHTML = '';
+    $('#accept-form').hidden = true;
+    $('#generate-resume').hidden = true;
+    showError('#draft-generation-error', '');
+    const success = $('#accept-success');
+    success.innerHTML = `Сохранено задач: ${result.exercise_ids.length}. <a href="${result.worksheet ? `/assignments/?student=${esc(state.studentId)}&tab=${esc(result.worksheet.kind)}&worksheet=${esc(result.worksheet.id)}` : '/assignments/'}">Открыть задания</a>`;
+    success.hidden = false;
+    $('#draft-heading').textContent = 'Задачи сохранены';
+  } catch (error) { showError('#accept-error', error.message); }
+  finally { busy(form, false); syncEditState(); }
+});
+
+async function init() {
+  try {
+    const students = await api('/api/students');
+    const select = $('#generate-form').elements.student_id;
+    select.innerHTML = students.map(item => `<option value="${esc(item.id)}">${esc(item.name)} · ${item.grade} класс</option>`).join('');
+    const wanted = new URLSearchParams(location.search).get('student');
+    if (students.some(item => item.id === wanted)) select.value = wanted;
+    if (!students.length) {
+      showError('#generate-error', 'Сначала добавьте ученика.');
+      $('#generate-form button[type="submit"]').disabled = true;
+    }
+  } catch (error) { showError('#generate-error', error.message); }
+}
+init();
+})();
