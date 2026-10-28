@@ -1,5 +1,6 @@
 import json
 import io
+import socket
 import ssl
 import tempfile
 import time
@@ -313,6 +314,23 @@ class ChatGPTLoginTest(TestCase):
         urlopen.side_effect = URLError("name resolution failed")
         with self.assertRaisesRegex(ProviderError, "Нет соединения с сервером OpenAI"):
             chatgpt_auth._post_form("https://auth.openai.com/api/accounts/oauth/token", {})
+
+    @patch("assistant.chatgpt_auth.urlopen")
+    def test_token_exchange_reports_safe_transport_diagnostics(self, urlopen):
+        cases = (
+            (socket.gaierror(8, "private DNS detail"), "ошибка DNS"),
+            (PermissionError(1, "private policy detail"), "сетевой доступ приложения"),
+            (TimeoutError("private timeout detail"), "время ожидания"),
+        )
+        for reason, expected in cases:
+            with self.subTest(reason=type(reason).__name__):
+                urlopen.side_effect = URLError(reason)
+                with patch.object(chatgpt_auth.LOGGER, "warning") as log:
+                    with self.assertRaises(ProviderError) as error:
+                        chatgpt_auth._post_form("https://auth.openai.com/api/accounts/oauth/token", {})
+                self.assertIn(expected.lower(), str(error.exception).lower())
+                self.assertNotIn("private", str(error.exception))
+                self.assertNotIn("private", str(log.call_args))
 
     def test_invalid_refresh_clears_tokens_and_offers_reconnect(self):
         chatgpt_auth._write({

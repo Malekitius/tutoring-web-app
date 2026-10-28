@@ -3,9 +3,11 @@
 import base64
 import hashlib
 import json
+import logging
 import os
 import re
 import secrets
+import socket
 import ssl
 import tempfile
 import threading
@@ -29,6 +31,7 @@ AUTH_BASE = "https://auth.openai.com"
 RESOURCE = "https://api.openai.com/v1"
 AUTH_PATH = Path(settings.DATA_DIR) / "assistant_auth.json"
 LOCK = threading.Lock()
+LOGGER = logging.getLogger(__name__)
 UNUSABLE_REFRESH_CODES = {
     "invalid_grant", "invalid_refresh_token", "token_expired", "refresh_token_expired",
     "refresh_token_invalidated", "refresh_token_reused",
@@ -97,8 +100,16 @@ def _post_form(url: str, fields: dict) -> dict:
         safe_code = code if isinstance(code, str) and re.fullmatch(r"[a-zA-Z0-9_.-]{1,80}", code) else None
         raise OAuthTokenError(exc.code, safe_code) from exc
     except URLError as exc:
-        if isinstance(exc.reason, ssl.SSLError) or "CERTIFICATE_VERIFY_FAILED" in str(exc.reason):
+        reason = exc.reason
+        LOGGER.warning("OpenAI OAuth transport failure: %s, errno=%s", type(reason).__name__, getattr(reason, "errno", None))
+        if isinstance(reason, ssl.SSLError) or "CERTIFICATE_VERIFY_FAILED" in str(reason):
             raise ProviderError("Не удалось проверить защищённое соединение с OpenAI. Проверьте сертификаты Python на этом компьютере.") from exc
+        if isinstance(reason, socket.gaierror):
+            raise ProviderError("Приложение не смогло найти адрес auth.openai.com (ошибка DNS). Проверьте подключение к сети и повторите вход.") from exc
+        if isinstance(reason, PermissionError):
+            raise ProviderError("Системе не удалось разрешить приложению соединение с auth.openai.com. Проверьте сетевой доступ приложения и повторите вход.") from exc
+        if isinstance(reason, TimeoutError):
+            raise ProviderError("Истекло время ожидания ответа auth.openai.com. Повторите вход.") from exc
         raise ProviderError("Нет соединения с сервером OpenAI при завершении входа. Проверьте интернет и доступ к auth.openai.com.") from exc
     except TimeoutError as exc:
         raise ProviderError("Сервер OpenAI не ответил при завершении входа. Попробуйте ещё раз.") from exc
