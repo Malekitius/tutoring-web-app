@@ -11,6 +11,7 @@ import tempfile
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -18,6 +19,7 @@ from urllib.request import Request, urlopen
 
 import jwt
 from django.conf import settings
+from filelock import FileLock, Timeout as FileLockTimeout
 
 from .https import verified_context
 from .providers import ProviderError
@@ -27,6 +29,36 @@ AUTH_BASE = "https://auth.openai.com"
 RESOURCE = "https://api.openai.com/v1"
 AUTH_PATH = Path(settings.DATA_DIR) / "assistant_auth.json"
 LOCK = threading.Lock()
+UNUSABLE_REFRESH_CODES = {
+    "invalid_grant", "invalid_refresh_token", "token_expired", "refresh_token_expired",
+    "refresh_token_invalidated", "refresh_token_reused",
+}
+TOKEN_FIELDS = ("access_token", "refresh_token", "id_token", "expires_at", "scopes", "model")
+
+
+class OAuthTokenError(ProviderError):
+    def __init__(self, status: int, code: str | None):
+        self.status = status
+        self.code = code
+        suffix = f", код {code}" if code else ""
+        super().__init__(f"OpenAI отклонил завершение входа (HTTP {status}{suffix}).")
+
+
+@contextmanager
+def auth_lock():
+    """Serialize rotating refresh tokens across threads and local server processes."""
+    AUTH_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with LOCK:
+        try:
+            with FileLock(str(AUTH_PATH) + ".lock", timeout=60):
+                yield
+        except FileLockTimeout as exc:
+            raise ProviderError("Подключение ChatGPT занято другим процессом. Повторите запрос.") from exc
+
+
+def clear_tokens(record: dict) -> None:
+    for key in TOKEN_FIELDS:
+        record.pop(key, None)
 
 
 def _read() -> dict:
@@ -63,8 +95,7 @@ def _post_form(url: str, fields: dict) -> dict:
         error = details.get("error") if isinstance(details, dict) else None
         code = error.get("code") if isinstance(error, dict) else error
         safe_code = code if isinstance(code, str) and re.fullmatch(r"[a-zA-Z0-9_.-]{1,80}", code) else None
-        suffix = f", код {safe_code}" if safe_code else ""
-        raise ProviderError(f"OpenAI отклонил завершение входа (HTTP {exc.code}{suffix}).") from exc
+        raise OAuthTokenError(exc.code, safe_code) from exc
     except URLError as exc:
         if isinstance(exc.reason, ssl.SSLError) or "CERTIFICATE_VERIFY_FAILED" in str(exc.reason):
             raise ProviderError("Не удалось проверить защищённое соединение с OpenAI. Проверьте сертификаты Python на этом компьютере.") from exc
@@ -87,7 +118,7 @@ def _b64url(data: bytes) -> str:
 
 
 def start(request) -> str:
-    with LOCK:
+    with auth_lock():
         record = _read()
         if not record.get("host_id"):
             record["host_id"] = f"urn:uuid:{uuid.uuid4()}"
@@ -141,11 +172,16 @@ def finish(request) -> None:
         client_id = pending["client_id"]
         if callback_id and callback_id != client_id:
             raise ProviderError("Идентификатор приложения изменился во время входа.")
-    tokens = _post_form(f"{AUTH_BASE}/api/accounts/oauth/token", {
-        "grant_type": "authorization_code", "client_id": client_id,
-        "code": code, "code_verifier": pending["verifier"],
-        "redirect_uri": pending["redirect_uri"], "resource": RESOURCE,
-    })
+    try:
+        tokens = _post_form(f"{AUTH_BASE}/api/accounts/oauth/token", {
+            "grant_type": "authorization_code", "client_id": client_id,
+            "code": code, "code_verifier": pending["verifier"],
+            "redirect_uri": pending["redirect_uri"], "resource": RESOURCE,
+        })
+    except OAuthTokenError as exc:
+        if exc.code == "invalid_grant":
+            raise ProviderError("Код входа в ChatGPT истёк. Начните подключение заново.") from exc
+        raise
     if "chatgpt.tokens.use.direct" not in tokens.get("scope", "").split():
         raise ProviderError("Для приложения не разрешено использование плана ChatGPT.")
     if not all(tokens.get(key) for key in ("access_token", "refresh_token", "id_token")):
@@ -167,7 +203,7 @@ def finish(request) -> None:
         raise ProviderError("Не удалось проверить токен ChatGPT. Начните вход заново.") from exc
     if claims.get("nonce") != pending["nonce"] or not claims.get("sub"):
         raise ProviderError("Проверка входа ChatGPT не пройдена.")
-    with LOCK:
+    with auth_lock():
         record = _read()
         if record.get("subject") and record["subject"] != claims["sub"] and pending["client_id"] != "dynamic_agent_client":
             raise ProviderError("Вход выполнен в другой аккаунт ChatGPT.")
@@ -186,7 +222,7 @@ def finish(request) -> None:
 
 
 def credentials() -> dict | None:
-    with LOCK:
+    with auth_lock():
         record = _read()
         if not record.get("access_token") or "chatgpt.tokens.use.direct" not in record.get("scopes", []):
             return None
@@ -194,10 +230,17 @@ def credentials() -> dict | None:
             return record
         if not record.get("refresh_token"):
             return None
-        tokens = _post_form(f"{AUTH_BASE}/api/accounts/oauth/token", {
-            "grant_type": "refresh_token", "client_id": record["client_id"],
-            "refresh_token": record["refresh_token"], "resource": RESOURCE,
-        })
+        try:
+            tokens = _post_form(f"{AUTH_BASE}/api/accounts/oauth/token", {
+                "grant_type": "refresh_token", "client_id": record["client_id"],
+                "refresh_token": record["refresh_token"], "resource": RESOURCE,
+            })
+        except OAuthTokenError as exc:
+            if exc.code in UNUSABLE_REFRESH_CODES:
+                clear_tokens(record)
+                _write(record)
+                raise ProviderError("Сессия ChatGPT истекла. Подключите ChatGPT заново в окне помощника.") from exc
+            raise
         if not tokens.get("access_token") or not tokens.get("refresh_token"):
             raise ProviderError("Сессия ChatGPT истекла. Подключите аккаунт заново.")
         if "chatgpt.tokens.use.direct" not in tokens.get("scope", "").split():
@@ -211,7 +254,7 @@ def credentials() -> dict | None:
 
 
 def disconnect() -> bool:
-    with LOCK:
+    with auth_lock():
         record = _read()
         if not record:
             return True
@@ -231,7 +274,6 @@ def disconnect() -> bool:
             except (ProviderError, HTTPError, URLError, TimeoutError):
                 revoked = False
         # Keep the registration/host mapping for a later reauthorization.
-        for key in ("access_token", "refresh_token", "id_token", "expires_at", "scopes", "model"):
-            record.pop(key, None)
+        clear_tokens(record)
         _write(record)
         return revoked

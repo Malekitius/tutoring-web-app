@@ -2,6 +2,7 @@ import json
 import io
 import ssl
 import tempfile
+import time
 from datetime import date
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -312,6 +313,51 @@ class ChatGPTLoginTest(TestCase):
         urlopen.side_effect = URLError("name resolution failed")
         with self.assertRaisesRegex(ProviderError, "Нет соединения с сервером OpenAI"):
             chatgpt_auth._post_form("https://auth.openai.com/api/accounts/oauth/token", {})
+
+    def test_invalid_refresh_clears_tokens_and_offers_reconnect(self):
+        chatgpt_auth._write({
+            "host_id": "urn:uuid:test-host", "client_id": "oaiapp_test", "subject": "test-account",
+            "access_token": "old-access", "refresh_token": "old-refresh", "id_token": "old-id",
+            "scopes": ["chatgpt.tokens.use.direct"], "expires_at": 0, "model": "test-model",
+        })
+        with patch.object(chatgpt_auth, "_post_form", side_effect=chatgpt_auth.OAuthTokenError(400, "invalid_grant")) as refresh:
+            result = self.client.get("/api/assistant/status")
+        self.assertEqual(result.status_code, 200)
+        self.assertFalse(result.json()["ready"])
+        self.assertIn("Подключите ChatGPT заново", result.json()["message"])
+        self.assertEqual(refresh.call_count, 1)
+        saved = chatgpt_auth._read()
+        self.assertEqual(saved["client_id"], "oaiapp_test")
+        self.assertEqual(saved["host_id"], "urn:uuid:test-host")
+        self.assertNotIn("access_token", saved)
+        self.assertNotIn("refresh_token", saved)
+        self.assertNotIn("id_token", saved)
+
+    def test_temporary_refresh_failure_keeps_tokens(self):
+        chatgpt_auth._write({
+            "client_id": "oaiapp_test", "access_token": "old-access", "refresh_token": "old-refresh",
+            "scopes": ["chatgpt.tokens.use.direct"], "expires_at": time.time() - 100,
+        })
+        with patch.object(chatgpt_auth, "_post_form", side_effect=chatgpt_auth.OAuthTokenError(503, "server_error")):
+            with self.assertRaisesRegex(ProviderError, "HTTP 503"):
+                chatgpt_auth.credentials()
+        self.assertEqual(chatgpt_auth._read()["refresh_token"], "old-refresh")
+
+    def test_refresh_saves_replacement_and_does_not_reuse_old_token(self):
+        chatgpt_auth._write({
+            "client_id": "oaiapp_test", "access_token": "old-access", "refresh_token": "old-refresh",
+            "scopes": ["chatgpt.tokens.use.direct"], "expires_at": time.time() - 100,
+            "model": "test-model",
+        })
+        replacement = {"access_token": "new-access", "refresh_token": "new-refresh",
+                       "scope": "chatgpt.tokens.use.direct", "expires_in": 3600}
+        with patch.object(chatgpt_auth, "_post_form", return_value=replacement) as refresh:
+            first = chatgpt_auth.credentials()
+            second = chatgpt_auth.credentials()
+        self.assertEqual(refresh.call_count, 1)
+        self.assertEqual(first["refresh_token"], "new-refresh")
+        self.assertEqual(second["access_token"], "new-access")
+        self.assertEqual(chatgpt_auth._read()["refresh_token"], "new-refresh")
 
     @patch("assistant.chatgpt_auth.jwt.decode")
     @patch("assistant.chatgpt_auth.jwt.PyJWKClient")

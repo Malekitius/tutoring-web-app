@@ -14,7 +14,10 @@
     }
     const response = await fetch(path, options);
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || `Ошибка ${response.status}`);
+    if (!response.ok) {
+      if (data.error?.includes('Подключите ChatGPT заново')) window.dispatchEvent(new Event('assistant:connection-expired'));
+      throw new Error(data.error || `Ошибка ${response.status}`);
+    }
     return data;
   }
 
@@ -147,6 +150,12 @@
   $('#helper-close').addEventListener('click', () => show(false));
   window.addEventListener('assistant:open', event => {
     if (event.detail?.studentName) form.elements.question.value = `Что важно учесть на следующем занятии для ученика «${event.detail.studentName}»?`;
+    show(true);
+  });
+  window.addEventListener('assistant:connection-expired', () => {
+    $('#helper-status').textContent = 'Сессия ChatGPT истекла. Подключите ChatGPT заново.';
+    $('#helper-connect').hidden = false;
+    $('#helper-disconnect').hidden = true;
     show(true);
   });
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && !panel.hidden) show(false); });

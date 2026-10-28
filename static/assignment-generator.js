@@ -17,7 +17,10 @@ async function api(path, method = 'GET', payload) {
   const response = await fetch(path, options);
   let data;
   try { data = await response.json(); } catch { throw new Error('Сервер вернул некорректный ответ'); }
-  if (!response.ok) throw new Error(data.error || `Ошибка ${response.status}`);
+  if (!response.ok) {
+    if (data.error?.includes('Подключите ChatGPT заново')) window.dispatchEvent(new Event('assistant:connection-expired'));
+    throw new Error(data.error || `Ошибка ${response.status}`);
+  }
   return data;
 }
 function busy(form, value) { form.querySelector('button[type="submit"]').disabled = value; }
