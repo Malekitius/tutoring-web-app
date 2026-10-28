@@ -98,6 +98,28 @@ def source_key(identity):
     return identity[0].casefold(), identity[1]
 
 
+def requested_source_numbers(hint):
+    """Recognize an explicit list or short range without guessing from free text."""
+    if not hint.strip():
+        return []
+    result = []
+    for part in re.split(r"\s*(?:[,;]|\bи\b)\s*", hint):
+        part = re.sub(r"^№\s*", "", part.strip())
+        range_match = re.fullmatch(r"(\d+)\s*-\s*(\d+)", part)
+        if range_match:
+            start, end = map(int, range_match.groups())
+            if end < start or end - start >= 20:
+                return []
+            result.extend(str(value) for value in range(start, end + 1))
+        elif re.fullmatch(r"\d+(?:\.\d+)*", part):
+            result.append(part)
+        else:
+            return []
+        if len(result) > 20:
+            return []
+    return result
+
+
 @api_errors
 def status(request):
     if request.method != "GET":
@@ -265,6 +287,8 @@ def generate_exercises(request):
     wishes = text(data.get("wishes", ""), "Пожелания", 1000)
     source_hint = text(data.get("source_task_hint", ""), "Номера задач", 160)
     source_index = number(data.get("source_index", 1), "Порядковый номер задачи", 1, 20)
+    requested_numbers = requested_source_numbers(source_hint) if mode == "source" else []
+    target_number = requested_numbers[source_index - 1] if source_index <= len(requested_numbers) else None
     previous = data.get("existing_tasks", [])
     if not isinstance(previous, list) or len(previous) > 19:
         raise ValueError("Некорректный список уже созданных задач")
@@ -297,6 +321,8 @@ def generate_exercises(request):
         "Например, № 12 с а), б), в) — одна задача, а не три. "
         "Добавь к каждому объекту source_number — основной номер без буквы подпункта (например, '12'), "
         "и source_material — точное название выбранного PDF. "
+        "Если в запросе указан целевой номер, перенеси именно его, не подменяй соседним номером. "
+        "Читай расположение текста и формул на странице PDF: извлечённый текст может перемешать номера и условия. "
         "Сохрани условие и данные задачи из источника, не сочиняй новую и не меняй числа. "
         "Если в источнике нет решения, реши задачу самостоятельно для поля answer; если решить не удаётся, оставь answer пустым. "
         "difficulty — оценка сложности от 1 до 4. Выбирай задачи по указанным номерам или ориентиру, "
@@ -324,6 +350,7 @@ def generate_exercises(request):
                          "количество_задач_из_источника": count if mode == "source" else None,
                          "порядковый_номер_целого_упражнения_в_подборке": source_index if mode == "source" else None,
                          "номера_или_ориентир_в_источнике": source_hint if mode == "source" else None,
+                         "целевой_номер_в_этом_запросе": target_number,
                          "уже_выбранные_номера_упражнений": previous_numbers,
                          "уже_составленные_условия": previous,
                          "учебный_контекст": ({"общая_цель": context["общая_цель"],
@@ -361,7 +388,7 @@ def generate_exercises(request):
             else:
                 raw_rows = parsed.get("exercises") if isinstance(parsed, dict) else None
                 if mode == "source" and raw_rows == []:
-                    return fail("На выбранных страницах не найдена подходящая задача. Проверьте страницы или номера задач.", 422)
+                    raise ValueError("задача не найдена на изображении выбранной страницы PDF")
                 if not isinstance(raw_rows, list) or len(raw_rows) != count:
                     raise ValueError("неверное количество задач")
                 rows = [(number(row.get("difficulty", 2), "Сложность", 1, 4) if mode == "source" and isinstance(row, dict)
@@ -372,6 +399,8 @@ def generate_exercises(request):
                 if not isinstance(row, dict):
                     raise ValueError("неверная структура задачи")
                 identity = source_identity(row, source_titles) if mode == "source" else None
+                if identity and target_number and identity[1] != target_number:
+                    raise ValueError(f"нужен номер {target_number}, а не {identity[1]}")
                 if identity and source_key(identity) in selected_identities:
                     raise ValueError("повторён уже выбранный номер упражнения; выбери следующий целый номер")
                 if identity:
@@ -391,6 +420,9 @@ def generate_exercises(request):
             last_error = "ответ не является корректным JSON"
         except (ValueError, TypeError) as exc:
             last_error = str(exc)
+    if mode == "source" and last_error == "задача не найдена на изображении выбранной страницы PDF":
+        label = f"№ {target_number}" if target_number else "задачу"
+        return fail(f"Не удалось прочитать {label} на выбранных страницах PDF после двух попыток. Проверьте страницы и качество изображения.", 422)
     return fail(f"Модель дважды вернула некорректную задачу: {last_error}. Попробуйте продолжить генерацию.", 502)
 
 

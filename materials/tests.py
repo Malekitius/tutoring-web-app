@@ -12,6 +12,7 @@ from pypdf import PdfWriter
 
 from assignments.pdf_export import build_source
 from assistant.providers import user_content
+from assistant.views import requested_source_numbers
 from config.portability import create_archive, restore_archive
 from school.models import SchoolClass, SchoolWorksheet
 from students.models import Student
@@ -43,6 +44,11 @@ class MaterialTests(TestCase):
             owner_key: str(owner_id), "title": "Учебник алгебры", "kind": "textbook",
             "file": SimpleUploadedFile("algebra.pdf", blank_pdf(), content_type="application/pdf"),
         })
+
+    def test_explicit_source_number_lists_and_ranges(self):
+        self.assertEqual(requested_source_numbers("№ 69, 70, 71 и 72"), ["69", "70", "71", "72"])
+        self.assertEqual(requested_source_numbers("69-72"), ["69", "70", "71", "72"])
+        self.assertEqual(requested_source_numbers("после № 69"), [])
 
     def test_upload_for_student_and_class_then_delete(self):
         first = self.upload("student_id", self.student.id)
@@ -88,8 +94,9 @@ class MaterialTests(TestCase):
         self.assertEqual(files, [])
         self.assertEqual(refs[0]["pages"], [1])
         text, files, refs = selected_context([{"id": str(material.id), "pages": "1"}], {"student": self.student}, "геометрия")
-        self.assertIn("Линейные уравнения", text)
-        self.assertEqual(files, [])
+        self.assertEqual(text, "")
+        self.assertEqual(len(files), 1)
+        self.assertTrue(files[0][1].startswith(b"%PDF-"))
         self.assertEqual(refs[0]["pages"], [1])
 
     @patch("assistant.views.get_provider")
@@ -110,7 +117,7 @@ class MaterialTests(TestCase):
         self.assertEqual(response.json()["source_refs"][0]["pages"], [1])
         self.assertIn("Задачник", factory.return_value.complete.call_args.args[1])
         self.assertIn("Сохрани условие", factory.return_value.complete.call_args.args[0])
-        self.assertNotIn("files", factory.return_value.complete.call_args.kwargs)
+        self.assertEqual(len(factory.return_value.complete.call_args.kwargs["files"]), 1)
 
     @patch("assistant.views.get_provider")
     def test_textbook_subparts_are_one_number_in_generated_draft(self, factory):
@@ -160,6 +167,33 @@ class MaterialTests(TestCase):
         self.assertEqual(response.status_code, 502)
         self.assertIn("повторён уже выбранный номер", response.json()["error"])
         self.assertEqual(factory.return_value.complete.call_count, 2)
+
+    @patch("assistant.views.get_provider")
+    def test_explicit_second_number_retries_empty_response_with_pdf(self, factory):
+        material = Material(student=self.student, title="Задачник", kind="workbook", original_name="book.pdf", page_count=1)
+        material.file.save("book.pdf", ContentFile(blank_pdf()), save=False)
+        material.save()
+        MaterialPage.objects.create(material=material, number=1,
+                                    text="Условия и формулы в начале.\n69\n70\n71\n72")
+        factory.return_value.complete.side_effect = [
+            json.dumps({"exercises": []}),
+            json.dumps({"exercises": [{"title": "№ 70", "source_material": "Задачник", "source_number": "70",
+                                      "prompt": "а) $u^7v^{12}$; б) $\\frac{u^3}{v^8}$.",
+                                      "answer": "а) Ответ; б) ответ."}]}, ensure_ascii=False),
+        ]
+        response = self.client.post("/api/assistant/generate", data=json.dumps({
+            "student_id": str(self.student.id), "subject": "Математика", "topic": "Корни",
+            "mode": "source", "count": 1, "source_index": 2, "source_task_hint": "69,70,71,72",
+            "existing_tasks": ["Условие № 69"],
+            "existing_source_numbers": [{"source_material": "Задачник", "source_number": "69"}],
+            "materials": [{"id": str(material.id), "pages": "1"}],
+        }), content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["exercises"][0]["source_number"], "70")
+        self.assertEqual(factory.return_value.complete.call_count, 2)
+        first_prompt = json.loads(factory.return_value.complete.call_args_list[0].args[1])
+        self.assertEqual(first_prompt["целевой_номер_в_этом_запросе"], "70")
+        self.assertEqual(len(factory.return_value.complete.call_args.kwargs["files"]), 1)
 
     @patch("assistant.views.get_provider")
     def test_scanned_pages_are_sent_as_pdf_snippet(self, factory):
