@@ -64,6 +64,13 @@ def selected_context(selections, owner, query):
             explicit_total += len(numbers)
             if explicit_total > MAX_EXPLICIT_PAGES:
                 raise ValueError("Укажите не более 8 страниц суммарно")
+            page_texts = dict(material.pages.filter(number__in=numbers).values_list("number", "text"))
+            fragments = [f"[{material.title}, стр. {number}]\n{page_texts.get(number, '')}"
+                         for number in numbers]
+            if all(page_texts.get(number) for number in numbers) and sum(map(len, excerpts + fragments)) <= MAX_TEXT_CHARS:
+                excerpts.extend(fragments)
+                refs.append({"title": material.title, "pages": numbers})
+                continue
             writer = PdfWriter()
             with material.file.open("rb") as source:
                 reader = PdfReader(source)

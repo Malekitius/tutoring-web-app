@@ -5,16 +5,18 @@
             <form id="generate-form" class="assistant-form">
               <label class="field tutor-target"><span>Ученик</span><select name="student_id" required></select></label>
               <div class="field-row school-target" hidden><label class="field"><span>Класс</span><select name="class_id"></select></label><label class="field"><span>Номер класса</span><select name="grade">{% for grade in "123456789" %}<option value="{{ grade }}">{{ grade }}</option>{% endfor %}<option value="10">10</option><option value="11">11</option></select></label></div>
+              <div class="generator-mode" role="radiogroup" aria-label="Способ составления задач"><label><input type="radio" name="mode" value="generated" checked><span>Создать новые</span></label><label><input type="radio" name="mode" value="source"><span>Из материалов</span></label></div>
               <label class="field"><span>Предмет</span><input name="subject" list="subject-suggestions" maxlength="80" value="Математика" required></label>
               <div class="field-row"><label class="field"><span>Тема</span><input name="topic" required maxlength="160" placeholder="Например, дроби"></label><label class="field"><span>Подтема</span><input name="subtopic" maxlength="160" placeholder="Необязательно"></label></div>
-              <fieldset class="generator-counts"><legend>Количество задач по сложности <small>всего от 1 до 20</small></legend><div class="generator-count-grid">
+              <fieldset class="generator-counts" data-generated-only><legend>Количество задач по сложности <small>всего от 1 до 20</small></legend><div class="generator-count-grid">
                 <label class="field"><span>Базовая</span><input name="count_1" type="number" min="0" max="20" value="3" required></label>
                 <label class="field"><span>Средняя</span><input name="count_2" type="number" min="0" max="20" value="0" required></label>
                 <label class="field"><span>Повышенная</span><input name="count_3" type="number" min="0" max="20" value="0" required></label>
                 <label class="field"><span>Олимпиадная</span><input name="count_4" type="number" min="0" max="20" value="0" required></label>
               </div><small id="generator-total">Всего: 3 задачи</small></fieldset>
-              <label class="field"><span>Пожелания</span><textarea name="wishes" maxlength="1000" placeholder="Например: две задачи на применение и одна на закрепление"></textarea></label>
-              <fieldset class="generator-materials"><legend>Материалы для задач <small>необязательно</small></legend><p>Выберите PDF. Если нужные страницы известны, укажите их: 12-15, 18. Для сканов страницы обязательны. Выбранные фрагменты отправляются модели.</p><div id="generator-material-list">Загружаю материалы…</div></fieldset>
+              <label class="field" data-generated-only><span>Пожелания</span><textarea name="wishes" maxlength="1000" placeholder="Например: две задачи на применение и одна на закрепление"></textarea></label>
+              <div data-source-only hidden><div class="field-row"><label class="field"><span>Сколько задач взять</span><input name="source_count" type="number" min="1" max="20" value="3" required disabled></label><label class="field"><span>Номера задач или ориентир</span><input name="source_task_hint" maxlength="160" placeholder="Например, № 12, 14 и 16" disabled></label></div>
+                <fieldset class="generator-materials"><legend>Материалы для задач</legend><p>Откройте PDF, найдите задачи и укажите страницы: 12-15, 18. Помощник перенесёт задачи с этих страниц в черновик. Для сканов номера страниц обязательны.</p><div id="generator-material-list">Загружаю материалы…</div></fieldset></div>
               <button class="button button-primary" type="submit">Создать черновик</button>
               <div id="generate-loading" class="generator-loading" role="status" aria-live="polite" hidden><span class="generator-loading-icon" aria-hidden="true">∑</span><span id="generate-loading-text">Создаю задачи…</span></div>
               <div id="generate-error" class="form-error" role="alert" hidden></div>

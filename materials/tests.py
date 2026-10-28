@@ -55,8 +55,14 @@ class MaterialTests(TestCase):
         self.assertEqual(len(self.client.get(f"/api/materials/?class_id={self.school_class.id}").json()), 1)
         file_response = self.client.get(first.json()["url"])
         self.assertEqual(file_response.status_code, 200)
+        self.assertEqual(file_response["X-Frame-Options"], "SAMEORIGIN")
+        self.assertIn("inline", file_response["Content-Disposition"])
         self.assertTrue(b"".join(file_response.streaming_content).startswith(b"%PDF-"))
         file_response.close()
+        page_response = self.client.get(f"/api/materials/{first.json()['id']}/page/1.png")
+        self.assertEqual(page_response.status_code, 200)
+        self.assertTrue(page_response.content.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertEqual(self.client.get(f"/api/materials/{first.json()['id']}/page/2.png").status_code, 404)
         path = Material.objects.get(id=first.json()["id"]).file.path
         self.assertEqual(self.client.delete(f"/api/materials/{first.json()['id']}").status_code, 200)
         self.assertFalse(Path(path).exists())
@@ -82,10 +88,9 @@ class MaterialTests(TestCase):
         self.assertEqual(files, [])
         self.assertEqual(refs[0]["pages"], [1])
         text, files, refs = selected_context([{"id": str(material.id), "pages": "1"}], {"student": self.student}, "геометрия")
-        self.assertEqual(text, "")
-        self.assertEqual(len(files), 1)
-        self.assertTrue(files[0][1].startswith(b"%PDF-"))
-        self.assertEqual(user_content("Составь задачу", files)[1]["type"], "input_file")
+        self.assertIn("Линейные уравнения", text)
+        self.assertEqual(files, [])
+        self.assertEqual(refs[0]["pages"], [1])
 
     @patch("assistant.views.get_provider")
     def test_generator_reads_selected_student_material(self, factory):
@@ -99,11 +104,13 @@ class MaterialTests(TestCase):
         }]})
         response = self.client.post("/api/assistant/generate", data=json.dumps({
             "student_id": str(self.student.id), "subject": "Математика", "topic": "Дроби",
-            "difficulty": 1, "count": 1, "materials": [{"id": str(material.id), "pages": ""}],
+            "mode": "source", "count": 1, "materials": [{"id": str(material.id), "pages": "1"}],
         }), content_type="application/json")
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.json()["source_refs"][0]["pages"], [1])
         self.assertIn("Задачник", factory.return_value.complete.call_args.args[1])
+        self.assertIn("Сохрани условие", factory.return_value.complete.call_args.args[0])
+        self.assertNotIn("files", factory.return_value.complete.call_args.kwargs)
 
     @patch("assistant.views.get_provider")
     def test_scanned_pages_are_sent_as_pdf_snippet(self, factory):
@@ -122,6 +129,33 @@ class MaterialTests(TestCase):
         sent_files = factory.return_value.complete.call_args.kwargs["files"]
         self.assertEqual(len(sent_files), 1)
         self.assertTrue(sent_files[0][1].startswith(b"%PDF-"))
+        self.assertEqual(user_content("Перенеси задачу", sent_files)[1]["type"], "input_file")
+
+    @patch("assistant.views.get_provider")
+    def test_generation_modes_do_not_mix_sources(self, factory):
+        material = Material(student=self.student, title="Задачник", kind="workbook",
+                            original_name="book.pdf", page_count=1)
+        material.file.save("book.pdf", ContentFile(blank_pdf()), save=False)
+        material.save()
+        base = {"student_id": str(self.student.id), "subject": "Математика", "topic": "Сложение",
+                "difficulty": 1, "count": 1}
+        rejected = self.client.post("/api/assistant/generate", data=json.dumps({
+            **base, "mode": "generated", "materials": [{"id": str(material.id), "pages": "1"}],
+        }), content_type="application/json")
+        self.assertEqual(rejected.status_code, 400)
+        missing_pages = self.client.post("/api/assistant/generate", data=json.dumps({
+            **base, "mode": "source", "materials": [{"id": str(material.id), "pages": ""}],
+        }), content_type="application/json")
+        self.assertEqual(missing_pages.status_code, 400)
+        factory.return_value.complete.return_value = json.dumps({"exercises": [{
+            "title": "Пример", "prompt": "Вычислите $2+2$.", "answer": "$4$",
+        }]})
+        generated = self.client.post("/api/assistant/generate", data=json.dumps({
+            **base, "mode": "generated", "materials": [],
+        }), content_type="application/json")
+        self.assertEqual(generated.status_code, 200, generated.content)
+        self.assertNotIn("files", factory.return_value.complete.call_args.kwargs)
+        self.assertEqual(generated.json()["source_refs"], [])
 
     @patch("assistant.views.get_provider")
     def test_school_generation_and_saved_pdf_workflow(self, factory):
@@ -136,7 +170,7 @@ class MaterialTests(TestCase):
         generated = self.client.post("/api/assistant/generate", data=json.dumps({
             "class_id": str(self.school_class.id), "subject": "Алгебра", "topic": "Уравнения",
             "difficulty": 1, "count": 1,
-            "materials": [{"id": str(material.id), "pages": ""}],
+            "mode": "source", "materials": [{"id": str(material.id), "pages": "1"}],
         }), content_type="application/json")
         self.assertEqual(generated.status_code, 200, generated.content)
         self.assertEqual(generated.json()["exercises"][0]["grades"], [8])

@@ -8,6 +8,9 @@ from pathlib import Path
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.http import FileResponse, JsonResponse
+from django.http import HttpResponse
+from django.views.decorators.clickjacking import xframe_options_sameorigin
+import pypdfium2 as pdfium
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
@@ -126,6 +129,7 @@ def detail(request, material_id):
     return JsonResponse({"ok": True})
 
 
+@xframe_options_sameorigin
 def file_view(request, material_id):
     if request.method != "GET":
         return fail("Метод не поддерживается", 405)
@@ -136,3 +140,32 @@ def file_view(request, material_id):
         return FileResponse(item.file.open("rb"), content_type="application/pdf", filename=item.original_name)
     except FileNotFoundError:
         return fail("PDF отсутствует на диске", 404)
+
+
+def page_image(request, material_id, page_number):
+    if request.method != "GET":
+        return fail("Метод не поддерживается", 405)
+    item = Material.objects.filter(id=material_id).first()
+    if item is None or not 1 <= page_number <= item.page_count:
+        return fail("Страница не найдена", 404)
+    try:
+        document = pdfium.PdfDocument(item.file.path)
+        try:
+            page = document[page_number - 1]
+            try:
+                scale = min(1.8, 3000 / max(1, *page.get_size()))
+                bitmap = page.render(scale=scale)
+                try:
+                    output = io.BytesIO()
+                    bitmap.to_pil().save(output, format="PNG")
+                finally:
+                    bitmap.close()
+            finally:
+                page.close()
+        finally:
+            document.close()
+        response = HttpResponse(output.getvalue(), content_type="image/png")
+        response["Cache-Control"] = "private, max-age=300"
+        return response
+    except (FileNotFoundError, pdfium.PdfiumError, RuntimeError, ValueError):
+        return fail("Не удалось открыть страницу PDF", 404)

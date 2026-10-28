@@ -35,9 +35,41 @@ async function loadMaterials() {
   try {
     const items = await api(`/api/materials/?${schoolMode ? 'class_id' : 'student_id'}=${encodeURIComponent(id)}`);
     if (targetSelect().value !== id) return;
-    list.innerHTML = items.length ? items.map(item => `<label class="generator-material-row" data-material-row="${esc(item.id)}"><input type="checkbox"><span><strong>${esc(item.title)}</strong><small>${item.page_count} стр. · ${item.text_page_count ? 'текст найден' : 'скан'}</small></span><input type="text" aria-label="Страницы материала ${esc(item.title)}" placeholder="Страницы" maxlength="100"></label>`).join('') : `<p>Материалов пока нет. Загрузите PDF в карточку ${schoolMode ? 'класса' : 'ученика'}.</p>`;
+    list.innerHTML = items.length ? items.map(item => `<div class="generator-material-row" data-material-row="${esc(item.id)}"><input type="checkbox" aria-label="Выбрать ${esc(item.title)}"><span><button class="generator-material-open" type="button" data-material-open="${esc(item.url)}" data-material-title="${esc(item.title)}" data-page-count="${item.page_count}">▤ ${esc(item.title)} · открыть PDF</button><small>${item.page_count} стр. · ${item.text_page_count ? 'текст найден' : 'скан'}</small></span><input type="text" aria-label="Страницы материала ${esc(item.title)}" placeholder="Страницы" maxlength="100"></div>`).join('') : `<p>Материалов пока нет. Загрузите PDF в карточку ${schoolMode ? 'класса' : 'ученика'}.</p>`;
   } catch (error) { list.textContent = error.message; }
 }
+$('#generator-material-list').addEventListener('click', event => {
+  const button = event.target.closest('[data-material-open]');
+  const row = event.target.closest('[data-material-row]');
+  if (!row) return;
+  if (button) {
+    const firstPage = /^\s*(\d+)/.exec(row.querySelector('input[type="text"]').value)?.[1] || 1;
+    window.MaterialsViewer.open(button.dataset.materialOpen, button.dataset.materialTitle, firstPage, button.dataset.pageCount);
+  } else if (!event.target.closest('input')) {
+    const checkbox = row.querySelector('input[type="checkbox"]');
+    checkbox.checked = !checkbox.checked;
+    row.classList.toggle('selected', checkbox.checked);
+  }
+});
+$('#generator-material-list').addEventListener('change', event => {
+  if (event.target.type === 'checkbox') event.target.closest('[data-material-row]').classList.toggle('selected', event.target.checked);
+});
+
+function syncMode() {
+  const source = $('#generate-form').elements.mode.value === 'source';
+  document.querySelector('.generator-mode').dataset.mode = source ? 'source' : 'generated';
+  document.querySelectorAll('[data-generated-only]').forEach(group => {
+    group.hidden = source;
+    group.querySelectorAll('input,textarea,select').forEach(input => { input.disabled = source; });
+  });
+  document.querySelectorAll('[data-source-only]').forEach(group => {
+    group.hidden = !source;
+    group.querySelectorAll('input,textarea,select').forEach(input => { input.disabled = !source; });
+  });
+  $('#generate-form button[type="submit"]').textContent = source ? 'Перенести задачи в черновик' : 'Создать черновик';
+  showError('#generate-error', '');
+}
+$('#generate-form').addEventListener('change', event => { if (event.target.name === 'mode') syncMode(); });
 function renderMath(root) {
   if (typeof window.renderMathInElement === 'function') window.renderMathInElement(root, {
     delimiters: [
@@ -152,8 +184,26 @@ async function runGeneration() {
   const form = $('#generate-form');
   const pending = state.pendingGeneration;
   if (!pending || state.generating) return;
+  if (form.elements.mode.value !== pending.payload.mode) {
+    showError('#draft-generation-error', 'Верните прежний режим или начните новый черновик.');
+    return;
+  }
+  if (targetSelect().value !== state.targetId) {
+    showError('#draft-generation-error', 'Верните исходную карточку или начните новый черновик.');
+    return;
+  }
+  if (pending.payload.mode === 'source') {
+    const materials = selectedMaterials();
+    if (!materials.length || materials.some(item => !item.pages)) {
+      showError('#draft-generation-error', 'Выберите PDF и укажите страницы, затем продолжите.');
+      return;
+    }
+    pending.payload.materials = materials;
+    pending.payload.source_task_hint = form.elements.source_task_hint.value;
+  }
   state.generating = true;
   busy(form, true);
+  form.querySelectorAll('input[name="mode"]').forEach(input => { input.disabled = true; });
   form.setAttribute('aria-busy', 'true');
   $('#generate-loading').hidden = false;
   $('#draft-progress').hidden = false;
@@ -167,11 +217,14 @@ async function runGeneration() {
   try {
     while (pending.nextIndex < pending.plan.length) {
       const level = pending.plan[pending.nextIndex];
-      const progress = `Создаю задачу ${pending.nextIndex + 1} из ${pending.plan.length} · ${difficultyNames[level].toLowerCase()}`;
+      const progress = pending.payload.mode === 'source'
+        ? `Переношу задачу ${pending.nextIndex + 1} из ${pending.plan.length}`
+        : `Создаю задачу ${pending.nextIndex + 1} из ${pending.plan.length} · ${difficultyNames[level].toLowerCase()}`;
       $('#generate-loading-text').textContent = progress;
       $('#draft-progress-text').textContent = progress;
       const result = await api('/api/assistant/generate', 'POST', {
-        ...pending.payload, difficulty: level, count: 1,
+        ...pending.payload, ...(pending.payload.mode === 'generated' ? {difficulty: level} : {}),
+        count: 1, source_index: pending.nextIndex + 1,
         existing_tasks: state.drafts.map(item => item.prompt.slice(0, 500)),
       });
       if (!Array.isArray(result.exercises) || result.exercises.length !== 1 || result[schoolMode ? 'class_id' : 'student_id'] !== state.targetId) {
@@ -194,6 +247,7 @@ async function runGeneration() {
     $('#draft-list').inert = false;
     form.removeAttribute('aria-busy');
     state.generating = false;
+    form.querySelectorAll('input[name="mode"]').forEach(input => { input.disabled = false; });
     busy(form, false);
     syncEditState();
   }
@@ -202,21 +256,26 @@ async function runGeneration() {
 $('#generate-form').addEventListener('submit', async event => {
   event.preventDefault();
   const form = event.currentTarget;
-  const counts = difficultyCounts(form);
-  const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
-  if (!Object.values(counts).every(Number.isInteger) || total < 1 || total > 20) {
-    showError('#generate-error', 'Выберите от 1 до 20 задач суммарно по всем сложностям.');
-    return;
+  const source = form.elements.mode.value === 'source';
+  const counts = source ? null : difficultyCounts(form);
+  const total = source ? Number(form.elements.source_count.value) : Object.values(counts).reduce((sum, count) => sum + count, 0);
+  if (!Number.isInteger(total) || total < 1 || total > 20 || (counts && !Object.values(counts).every(Number.isInteger))) {
+    showError('#generate-error', 'Выберите от 1 до 20 задач.'); return;
+  }
+  const materials = source ? selectedMaterials() : [];
+  if (source && (!materials.length || materials.some(item => !item.pages))) {
+    showError('#generate-error', 'Выберите PDF и укажите страницы с задачами.'); return;
   }
   const payload = Object.fromEntries(new FormData(form).entries());
   for (const level of [1, 2, 3, 4]) delete payload[`count_${level}`];
-  payload.materials = selectedMaterials();
+  delete payload.source_count;
+  payload.materials = materials;
   state.drafts = [];
   state.targetId = payload[schoolMode ? 'class_id' : 'student_id'];
   state.meta = payload;
   state.pendingGeneration = {
     payload,
-    plan: [1, 2, 3, 4].flatMap(level => Array(counts[String(level)]).fill(level)),
+    plan: source ? Array(total).fill('source') : [1, 2, 3, 4].flatMap(level => Array(counts[String(level)]).fill(level)),
     nextIndex: 0,
   };
   $('#accept-form [name="title"]').value = `${payload.topic} · ${payload.subject}`;
@@ -269,6 +328,7 @@ $('#accept-form').addEventListener('submit', async event => {
 async function init() {
   try {
     const form = $('#generate-form');
+    syncMode();
     form.querySelector('.school-target').hidden = !schoolMode;
     form.querySelector('.tutor-target').hidden = schoolMode;
     form.elements.student_id.disabled = schoolMode;
