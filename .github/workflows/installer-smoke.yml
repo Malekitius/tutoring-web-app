@@ -41,6 +41,8 @@ jobs:
         run: python manage.py test schedule
       - name: Test students
         run: python manage.py test students
+      - name: Test school
+        run: python manage.py test school
       - name: Install and check a fresh copy
         shell: bash
         run: |

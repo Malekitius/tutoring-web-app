@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f5f0"><title>Кабинет преподавателя — расписание школы</title>
+  <link rel="stylesheet" href="/static/app.css?v=5"><link rel="stylesheet" href="/static/schedule.css?v=8"><link rel="stylesheet" href="/static/school.css?v=1">
+  <script src="/static/school-schedule.js?v=1" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">∑</span><div><strong>Кабинет<br>преподавателя</strong><small>Личное пространство</small></div></div>
+      {% include "mode-switch.html" with mode="school" %}
+      <div class="sidebar-label">ШКОЛА</div>
+      <nav class="nav" aria-label="Разделы школы"><a class="nav-item" href="/school/"><span aria-hidden="true">▦</span> Классы</a><a class="nav-item active" href="/school/schedule/" aria-current="page"><span aria-hidden="true">▤</span> Расписание</a><a class="nav-item" href="/data/"><span aria-hidden="true">▣</span> Данные</a></nav>
+      <div class="sidebar-bottom"><div class="local-badge"><span class="local-dot"></span> Данные на этом компьютере</div><p>Школьные уроки и индивидуальные занятия проверяются на пересечения.</p></div>
+    </aside>
+    <main class="workspace schedule-workspace">
+      <header class="topbar"><div><div class="eyebrow">ШКОЛА · УЧЕБНЫЙ ПРОЦЕСС</div><h1>Расписание классов</h1><p class="topbar-subtitle">Уроки недели с 09:00 до 22:00.</p></div><button id="add-school-lesson" class="button button-primary" type="button"><span aria-hidden="true">＋</span> Добавить урок</button></header>
+      <section class="schedule-toolbar" aria-label="Навигация по календарю"><div class="week-navigation"><button id="prev-week" class="icon-button" type="button" aria-label="Предыдущая неделя">‹</button><button id="today-week" class="button button-soft" type="button">Сегодня</button><button id="next-week" class="icon-button" type="button" aria-label="Следующая неделя">›</button><h2 id="week-label"></h2></div><div class="schedule-summary"><select id="school-class-filter" class="school-calendar-filter" aria-label="Фильтр по классу"><option value="">Все классы</option></select><span id="lesson-total">0 уроков</span><span class="summary-divider"></span><span id="hours-total">0 часов</span></div></section>
+      <section class="calendar-panel" aria-label="Школьное расписание"><div id="school-calendar" class="calendar-grid" aria-live="polite"></div></section>
+      <p class="schedule-hint">Нажмите на свободное время для нового урока. Перетащите урок для переноса или откройте карточку для изменения статуса, темы и серии.</p>
+    </main>
+  </div>
+  <dialog id="school-lesson-dialog" class="editor-dialog schedule-dialog" aria-labelledby="school-lesson-title">
+    <form id="school-lesson-form"><div class="dialog-header"><div><div class="eyebrow">ШКОЛЬНОЕ РАСПИСАНИЕ</div><h2 id="school-lesson-title">Новый урок</h2></div><button class="icon-button lesson-close" type="button" aria-label="Закрыть">×</button></div>
+      <div class="dialog-fields"><label class="field"><span>Класс</span><select id="school-lesson-class" required></select></label><div class="field-row"><label class="field"><span>Дата</span><input id="school-lesson-date" type="date" required></label><label class="field"><span>Начало</span><input id="school-lesson-time" type="time" step="300" required></label></div><div class="field-row"><label class="field"><span>Длительность, мин</span><input id="school-lesson-duration" type="number" min="15" max="240" step="5" required></label><label class="field" id="school-status-field" hidden><span>Статус</span><select id="school-lesson-status"><option value="planned">Запланировано</option><option value="completed">Проведено</option><option value="cancelled">Отменено</option></select></label></div><label class="field"><span>Тема урока</span><input id="school-lesson-topic" maxlength="160" placeholder="Например, линейные уравнения"></label><label class="field"><span>Комментарий</span><textarea id="school-lesson-comment" maxlength="5000" placeholder="План или заметка к этому уроку"></textarea></label><label id="school-repeat-field" class="check-field"><input id="school-lesson-repeat" type="checkbox"><span><strong>Повторять каждую неделю</strong><small>Отдельные уроки можно менять независимо.</small></span></label><div id="school-series-actions" class="series-actions" hidden><button id="school-edit-series" class="text-button" type="button">Изменить будущие уроки</button><button id="school-end-series" class="text-button danger-text" type="button">Завершить серию</button></div></div>
+      <div id="school-lesson-error" class="form-error" role="alert" hidden></div><div class="dialog-actions"><button id="school-delete-lesson" class="button button-danger" type="button" hidden>Удалить урок</button><span class="action-spacer"></span><button class="button button-secondary lesson-close" type="button">Отмена</button><button class="button button-primary" type="submit">Сохранить</button></div></form>
+  </dialog>
+  <dialog id="school-series-dialog" class="editor-dialog schedule-dialog" aria-labelledby="school-series-title">
+    <form id="school-series-form"><div class="dialog-header"><div><div class="eyebrow">ЕЖЕНЕДЕЛЬНЫЙ УРОК</div><h2 id="school-series-title">Изменить будущие уроки</h2></div><button class="icon-button series-close" type="button" aria-label="Закрыть">×</button></div><div class="dialog-fields"><p id="school-series-from" class="series-note"></p><label class="field"><span>Класс</span><select id="school-series-class" required></select></label><div class="field-row"><label class="field"><span>День недели</span><select id="school-series-weekday"><option value="0">Понедельник</option><option value="1">Вторник</option><option value="2">Среда</option><option value="3">Четверг</option><option value="4">Пятница</option><option value="5">Суббота</option><option value="6">Воскресенье</option></select></label><label class="field"><span>Начало</span><input id="school-series-time" type="time" step="300" required></label></div><div class="field-row"><label class="field"><span>Длительность, мин</span><input id="school-series-duration" type="number" min="15" max="240" step="5" required></label><label class="field"><span>Тема</span><input id="school-series-topic" maxlength="160"></label></div></div><div id="school-series-error" class="form-error" role="alert" hidden></div><div class="dialog-actions"><button class="button button-secondary series-close" type="button">Отмена</button><button class="button button-primary" type="submit">Сохранить серию</button></div></form>
+  </dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

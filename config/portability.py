@@ -20,21 +20,24 @@ from django.db.utils import IntegrityError
 from assignments.models import Exercise, ExerciseGrade, Submission, Worksheet, WorksheetItem
 from finances.models import Payment
 from schedule.models import Lesson, LessonComment, WeeklyRule
+from school.models import SchoolClass, SchoolLesson, SchoolStudent, SchoolWeeklyRule
 from students.models import Student, Subject, Topic
 
 
 ARCHIVE_FORMAT = "tutoring-web-app.backup"
-ARCHIVE_VERSION = 1
+ARCHIVE_VERSION = 2
 MAX_ARCHIVE_BYTES = 1_000_000_000
 MAX_ARCHIVE_FILES = 20_000
 MAX_MANIFEST_BYTES = 5_000_000
 MAX_RECORDS_BYTES = 500_000_000
 MODELS = (
     Student, Subject, Topic, WeeklyRule, Lesson, LessonComment,
+    SchoolClass, SchoolStudent, SchoolWeeklyRule, SchoolLesson,
     Exercise, ExerciseGrade, Worksheet, WorksheetItem, Submission, Payment,
 )
 MODEL_LABELS = {model._meta.label_lower for model in MODELS}
 MODELS_BY_LABEL = {model._meta.label_lower: model for model in MODELS}
+SCHOOL_LABELS = {model._meta.label_lower for model in (SchoolClass, SchoolStudent, SchoolWeeklyRule, SchoolLesson)}
 
 
 def _safe_media_name(value):
@@ -126,7 +129,7 @@ def inspect_archive(upload, media_stage=None):
             if sizes["manifest.json"] > MAX_MANIFEST_BYTES or sizes["records.json"] > MAX_RECORDS_BYTES:
                 raise ValueError("Служебные файлы архива слишком большие")
             manifest = json.loads(archive.read("manifest.json"))
-            if not isinstance(manifest, dict) or manifest.get("format") != ARCHIVE_FORMAT or manifest.get("version") != ARCHIVE_VERSION:
+            if not isinstance(manifest, dict) or manifest.get("format") != ARCHIVE_FORMAT or manifest.get("version") not in (1, ARCHIVE_VERSION):
                 raise ValueError("Неподдерживаемый формат резервной копии")
             files = manifest.get("files")
             if not isinstance(files, dict) or set(names) != {"manifest.json", *files}:
@@ -154,7 +157,11 @@ def inspect_archive(upload, media_stage=None):
                 counts[row["model"]] += 1
                 if row["model"] == Submission._meta.label_lower:
                     submission_files.add(f"uploads/{_safe_media_name(row['fields'].get('file', ''))}")
-            if manifest.get("counts") != counts or submission_files != set(files) - {"records.json"}:
+            expected_labels = MODEL_LABELS if manifest["version"] == ARCHIVE_VERSION else MODEL_LABELS - SCHOOL_LABELS
+            expected_counts = {label: counts[label] for label in expected_labels}
+            if (manifest.get("counts") != expected_counts
+                    or (manifest["version"] == 1 and any(counts[label] for label in SCHOOL_LABELS))
+                    or submission_files != set(files) - {"records.json"}):
                 raise ValueError("Содержимое архива не соответствует описанию")
             for row in records:
                 model = MODELS_BY_LABEL[row["model"]]

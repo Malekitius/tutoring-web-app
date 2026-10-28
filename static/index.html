@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f7f5f0">
     <title>Кабинет репетитора — ученики</title>
-    <link rel="stylesheet" href="/static/app.css?v=4">
+    <link rel="stylesheet" href="/static/app.css?v=5">
     <link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
     <link rel="stylesheet" href="/static/assistant-widget.css?v=3">
     <script src="/static/vendor/katex/katex.min.js" defer></script>
@@ -18,8 +18,9 @@
       <aside class="sidebar">
         <div class="brand">
           <span class="brand-mark" aria-hidden="true">∑</span>
-          <div><strong>Кабинет<br>репетитора</strong><small>Личное пространство</small></div>
+          <div><strong>Кабинет<br>преподавателя</strong><small>Личное пространство</small></div>
         </div>
+        {% include "mode-switch.html" with mode="tutoring" %}
         <div class="sidebar-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
         <nav class="nav" aria-label="Разделы">
           <a class="nav-item active" href="/" aria-current="page"><span aria-hidden="true">▦</span> Ученики</a>

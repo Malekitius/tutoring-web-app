@@ -49,6 +49,13 @@ def check_collision(day, time_value, duration, exclude_id=None):
                 f"В это время уже есть занятие: {existing.student.name}, "
                 f"{existing.time.strftime('%H:%M')}"
             )
+    from school.models import SchoolLesson
+    from school.services import ensure_occurrences as ensure_school_occurrences
+
+    ensure_school_occurrences(day, day)
+    for existing in SchoolLesson.objects.filter(date=day).exclude(status="cancelled").select_related("school_class"):
+        if overlaps(time_value, duration, existing.time, existing.duration_min):
+            raise ValueError(f"В это время уже есть урок класса {existing.school_class.name}, {existing.time:%H:%M}")
 
 
 def check_rule_collision(weekday, time_value, duration, start_date, end_date=None, exclude_rule_id=None):
@@ -66,6 +73,14 @@ def check_rule_collision(weekday, time_value, duration, start_date, end_date=Non
                 "Еженедельное занятие пересекается с другой серией: "
                 f"{rule.student.name}, {rule.time.strftime('%H:%M')}"
             )
+    from school.models import SchoolWeeklyRule
+
+    school_rules = SchoolWeeklyRule.objects.filter(weekday=weekday, start_date__lte=end_date or date.max)
+    for rule in school_rules.select_related("school_class"):
+        if rule.end_date and rule.end_date < start_date:
+            continue
+        if overlaps(time_value, duration, rule.time, rule.duration_min):
+            raise ValueError(f"Серия пересекается с уроком класса {rule.school_class.name} в {rule.time:%H:%M}")
 
 
 def check_one_off_future_collisions(weekday, time_value, duration, start_date, end_date=None, exclude_rule_id=None):
@@ -83,6 +98,19 @@ def check_one_off_future_collisions(weekday, time_value, duration, start_date, e
             raise ValueError(
                 f"Серия пересекается с занятием {lesson.student.name} "
                 f"{lesson.date.strftime('%d.%m')} в {lesson.time.strftime('%H:%M')}"
+            )
+    from school.models import SchoolLesson
+
+    school_lessons = SchoolLesson.objects.filter(date__gte=start_date).exclude(status="cancelled")
+    if end_date:
+        school_lessons = school_lessons.filter(date__lte=end_date)
+    for lesson in school_lessons.select_related("school_class"):
+        if lesson.date.weekday() != weekday or (lesson.weekly_rule_id and not lesson.is_override):
+            continue
+        if overlaps(time_value, duration, lesson.time, lesson.duration_min):
+            raise ValueError(
+                f"Серия пересекается с уроком класса {lesson.school_class.name} "
+                f"{lesson.date:%d.%m} в {lesson.time:%H:%M}"
             )
 
 
