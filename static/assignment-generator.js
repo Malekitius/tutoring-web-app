@@ -69,7 +69,7 @@ function syncMode() {
     group.hidden = !source;
     group.querySelectorAll('input,textarea,select').forEach(input => { input.disabled = !source; });
   });
-  $('#generate-form button[type="submit"]').textContent = source ? 'Перенести задачи в черновик' : 'Создать черновик';
+  $('#generate-form button[type="submit"]').textContent = source ? 'Перенести номера в черновик' : 'Создать черновик';
   showError('#generate-error', '');
 }
 $('#generate-form').addEventListener('change', event => { if (event.target.name === 'mode') syncMode(); });
@@ -87,7 +87,7 @@ function renderMath(root) {
 function renderDrafts() {
   const root = $('#draft-list');
   root.innerHTML = state.drafts.map((item, index) => `<article class="assistant-draft" data-index="${index}">
-    <div class="assistant-draft-head"><strong>Задача ${index + 1} · ${esc(difficultyNames[item.difficulty])}</strong><button class="text-button" type="button" data-remove="${index}">Убрать</button></div>
+    <div class="assistant-draft-head"><strong>Задача ${index + 1}${item.source_number ? ` · № ${esc(item.source_number)}` : ''} · ${esc(difficultyNames[item.difficulty])}</strong><button class="text-button" type="button" data-remove="${index}">Убрать</button></div>
     ${item.source_refs?.length ? `<p class="draft-source">Материалы: ${item.source_refs.map(ref => `${esc(ref.title)} · стр. ${ref.pages.join(', ')}`).join('; ')}</p>` : ''}
     <label class="field"><span>Название</span><input name="title" value="${esc(item.title)}" maxlength="160" required></label>
     <div class="assistant-draft-rendered" data-part="prompt">
@@ -221,7 +221,7 @@ async function runGeneration() {
     while (pending.nextIndex < pending.plan.length) {
       const level = pending.plan[pending.nextIndex];
       const progress = pending.payload.mode === 'source'
-        ? `Переношу задачу ${pending.nextIndex + 1} из ${pending.plan.length}`
+        ? `Переношу номер ${pending.nextIndex + 1} из ${pending.plan.length}`
         : `Создаю задачу ${pending.nextIndex + 1} из ${pending.plan.length} · ${difficultyNames[level].toLowerCase()}`;
       $('#generate-loading-text').textContent = progress;
       $('#draft-progress-text').textContent = progress;
@@ -229,6 +229,9 @@ async function runGeneration() {
         ...pending.payload, ...(pending.payload.mode === 'generated' ? {difficulty: level} : {}),
         count: 1, source_index: pending.nextIndex + 1,
         existing_tasks: state.drafts.map(item => item.prompt.slice(0, 500)),
+        ...(pending.payload.mode === 'source' ? {existing_source_numbers: state.drafts.map(item => ({
+          source_material: item.source_material, source_number: item.source_number,
+        }))} : {}),
       });
       if (!Array.isArray(result.exercises) || result.exercises.length !== 1 || result[schoolMode ? 'class_id' : 'student_id'] !== state.targetId) {
         throw new Error('Сервер вернул неверное количество задач.');

@@ -100,7 +100,7 @@ class MaterialTests(TestCase):
         MaterialPage.objects.create(material=material, number=1, text="Дроби. Сложите одну вторую и одну третью.")
         factory.return_value.complete.return_value = json.dumps({"exercises": [{
             "title": "Сложение дробей", "prompt": "Вычислите $\\frac{1}{2}+\\frac{1}{3}$.",
-            "answer": "$\\frac{5}{6}$",
+            "answer": "$\\frac{5}{6}$", "source_material": "Задачник", "source_number": "12",
         }]})
         response = self.client.post("/api/assistant/generate", data=json.dumps({
             "student_id": str(self.student.id), "subject": "Математика", "topic": "Дроби",
@@ -113,6 +113,55 @@ class MaterialTests(TestCase):
         self.assertNotIn("files", factory.return_value.complete.call_args.kwargs)
 
     @patch("assistant.views.get_provider")
+    def test_textbook_subparts_are_one_number_in_generated_draft(self, factory):
+        material = Material(student=self.student, title="Задачник", kind="workbook", original_name="book.pdf", page_count=1)
+        material.file.save("book.pdf", ContentFile(blank_pdf()), save=False)
+        material.save()
+        MaterialPage.objects.create(material=material, number=1,
+                                    text="№ 12. Вычислите: а) 1+1; б) 2+2; в) 3+3; г) 4+4.\n№ 13. Вычислите 5+5.")
+        factory.return_value.complete.return_value = json.dumps({"exercises": [{
+            "title": "№ 12", "source_material": "Задачник", "source_number": "12", "difficulty": 1,
+            "prompt": "№ 12. Вычислите: а) $1+1$; б) $2+2$; в) $3+3$; г) $4+4$.",
+            "answer": "а) $2$; б) $4$; в) $6$; г) $8$.",
+        }]}, ensure_ascii=False)
+        response = self.client.post("/api/assistant/generate", data=json.dumps({
+            "student_id": str(self.student.id), "subject": "Математика", "topic": "Сложение",
+            "mode": "source", "count": 1, "source_task_hint": "№ 12",
+            "materials": [{"id": str(material.id), "pages": "1"}],
+        }), content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(len(response.json()["exercises"]), 1)
+        self.assertEqual(response.json()["exercises"][0]["source_number"], "12")
+        for letter in "абвг":
+            self.assertIn(f"{letter})", response.json()["exercises"][0]["prompt"])
+            self.assertIn(f"{letter})", response.json()["exercises"][0]["answer"])
+        instructions, prompt = factory.return_value.complete.call_args.args
+        self.assertIn("ОДИН объект", instructions)
+        self.assertIn("ВСЕ его подпункты", instructions)
+        self.assertIn("порядковый_номер_целого_упражнения_в_подборке", prompt)
+
+    @patch("assistant.views.get_provider")
+    def test_source_generation_rejects_repeated_parent_number(self, factory):
+        material = Material(student=self.student, title="Задачник", kind="workbook", original_name="book.pdf", page_count=1)
+        material.file.save("book.pdf", ContentFile(blank_pdf()), save=False)
+        material.save()
+        MaterialPage.objects.create(material=material, number=1, text="№ 12. а) 1+1; б) 2+2. № 13. 3+3.")
+        factory.return_value.complete.return_value = json.dumps({"exercises": [{
+            "title": "№ 12, б)", "source_material": "Задачник", "source_number": "12",
+            "prompt": "б) $2+2$.", "answer": "$4$.",
+        }]}, ensure_ascii=False)
+        response = self.client.post("/api/assistant/generate", data=json.dumps({
+            "student_id": str(self.student.id), "subject": "Математика", "topic": "Сложение",
+            "mode": "source", "count": 1, "source_index": 2,
+            "existing_tasks": ["№ 12. а) $1+1$; б) $2+2$."],
+            "existing_source_numbers": [{"source_material": "Задачник", "source_number": "12"}],
+            "materials": [{"id": str(material.id), "pages": "1"}],
+        }), content_type="application/json")
+        self.assertEqual(response.status_code, 502)
+        self.assertIn("повторён уже выбранный номер", response.json()["error"])
+        self.assertEqual(factory.return_value.complete.call_count, 2)
+
+    @patch("assistant.views.get_provider")
     def test_scanned_pages_are_sent_as_pdf_snippet(self, factory):
         material = Material(student=self.student, title="Скан задачника", kind="workbook",
                             original_name="scan.pdf", page_count=1)
@@ -120,6 +169,7 @@ class MaterialTests(TestCase):
         material.save()
         factory.return_value.complete.return_value = json.dumps({"exercises": [{
             "title": "Пример", "prompt": "Вычислите $2+2$.", "answer": "$4$",
+            "source_material": "Скан задачника", "source_number": "12",
         }]})
         response = self.client.post("/api/assistant/generate", data=json.dumps({
             "student_id": str(self.student.id), "subject": "Математика", "topic": "Сложение",
@@ -166,6 +216,7 @@ class MaterialTests(TestCase):
         MaterialPage.objects.create(material=material, number=1, text="Линейные уравнения. Решите уравнение.")
         factory.return_value.complete.return_value = json.dumps({"exercises": [{
             "title": "Уравнение", "prompt": "Решите $x+2=5$.", "answer": "$x=3$",
+            "source_material": "Задачник 8А", "source_number": "12",
         }]})
         generated = self.client.post("/api/assistant/generate", data=json.dumps({
             "class_id": str(self.school_class.id), "subject": "Алгебра", "topic": "Уравнения",

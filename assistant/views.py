@@ -73,6 +73,31 @@ def source_reference(row):
     return text("; ".join(values), "Источник", 1200)
 
 
+def source_number(value):
+    """Keep only the textbook's parent exercise number, never a lettered subpart."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        value = str(value)
+    label = text(value, "Номер упражнения в источнике", 40, True).strip()
+    match = re.fullmatch(r"(?:№\s*)?(\d+(?:[.-]\d+)*)\.?", label)
+    if not match:
+        raise ValueError("Укажите номер упражнения без буквы подпункта")
+    return match.group(1)
+
+
+def source_identity(row, source_titles=None):
+    title = text(row.get("source_material", ""), "Название материала", 160, True).strip()
+    matched = title
+    if source_titles is not None:
+        matched = next((item for item in source_titles if item.casefold() == title.casefold()), None)
+    if matched is None:
+        raise ValueError("Материал задачи не совпадает с выбранным PDF")
+    return matched, source_number(row.get("source_number", ""))
+
+
+def source_key(identity):
+    return identity[0].casefold(), identity[1]
+
+
 @api_errors
 def status(request):
     if request.method != "GET":
@@ -244,6 +269,9 @@ def generate_exercises(request):
     if not isinstance(previous, list) or len(previous) > 19:
         raise ValueError("Некорректный список уже созданных задач")
     previous = [text(item, "Условие предыдущей задачи", 500, True) for item in previous]
+    previous_numbers = data.get("existing_source_numbers", []) if mode == "source" else []
+    if not isinstance(previous_numbers, list) or len(previous_numbers) > 19:
+        raise ValueError("Некорректный список уже выбранных номеров")
     common_rules = (
         "Условие и решение пиши по-русски, математические формулы заключай только между $...$. "
         "Используй простые формулы и распространённые команды: \\frac, \\sqrt, \\cdot, \\times, "
@@ -262,10 +290,17 @@ def generate_exercises(request):
     ) if mode == "generated" else (
         "Ты переносишь существующие задачи с выбранных страниц учебного PDF. Ответь только JSON-объектом с полем "
         "exercises — массивом строго запрошенной длины. У каждой задачи поля title, prompt, answer, difficulty. "
+        "Единица подсчёта — целый нумерованный номер упражнения в учебнике, а не его буквенный подпункт. "
+        "Если номер содержит а), б), в), г) и т. п., создай ОДИН объект exercises для всего номера: "
+        "в prompt сохрани общий текст и ВСЕ его подпункты в исходном порядке с буквами, "
+        "в answer дай решение или ответ для КАЖДОГО подпункта с той же буквой. "
+        "Например, № 12 с а), б), в) — одна задача, а не три. "
+        "Добавь к каждому объекту source_number — основной номер без буквы подпункта (например, '12'), "
+        "и source_material — точное название выбранного PDF. "
         "Сохрани условие и данные задачи из источника, не сочиняй новую и не меняй числа. "
         "Если в источнике нет решения, реши задачу самостоятельно для поля answer; если решить не удаётся, оставь answer пустым. "
         "difficulty — оценка сложности от 1 до 4. Выбирай задачи по указанным номерам или ориентиру, "
-        "в порядке следования на страницах. Не повторяй уже перенесённые условия. "
+        "в порядке следования на страницах. Не повторяй уже перенесённые номера и условия. "
         "Если подходящей задачи нет или страница неразборчива, верни пустой массив exercises. "
         + common_rules
     )
@@ -274,12 +309,22 @@ def generate_exercises(request):
         materials if mode == "source" else [], {"student": student} if student else {"school_class": school_class},
         " ".join((topic, subtopic, wishes, source_hint)),
     )
+    source_titles = [ref["title"] for ref in source_refs]
+    previous_identities = set()
+    if mode == "source":
+        if len(previous_numbers) != len(previous):
+            raise ValueError("Для каждой уже созданной задачи укажите номер из источника")
+        for row in previous_numbers:
+            if not isinstance(row, dict):
+                raise ValueError("Некорректный список уже выбранных номеров")
+            previous_identities.add(source_key(source_identity(row)))
     prompt = json.dumps({"режим": mode, "предмет": subject, "тема": topic, "подтема": subtopic,
                          "количество_по_сложности_1_базовая_2_средняя_3_повышенная_4_олимпиадная": counts,
                          "пожелания": wishes, "класс": grade,
                          "количество_задач_из_источника": count if mode == "source" else None,
-                         "номер_задачи_в_подборке": source_index if mode == "source" else None,
+                         "порядковый_номер_целого_упражнения_в_подборке": source_index if mode == "source" else None,
                          "номера_или_ориентир_в_источнике": source_hint if mode == "source" else None,
+                         "уже_выбранные_номера_упражнений": previous_numbers,
                          "уже_составленные_условия": previous,
                          "учебный_контекст": ({"общая_цель": context["общая_цель"],
                                               "предметы": context["предметы"],
@@ -322,12 +367,21 @@ def generate_exercises(request):
                 rows = [(number(row.get("difficulty", 2), "Сложность", 1, 4) if mode == "source" and isinstance(row, dict)
                          else difficulty if mode == "generated" else 2, row) for row in raw_rows]
             exercises = []
+            selected_identities = set(previous_identities)
             for level, row in rows:
                 if not isinstance(row, dict):
                     raise ValueError("неверная структура задачи")
-                exercises.append(exercise_fields({**row, "subject": subject, "topic": topic,
-                                                  "subtopic": subtopic, "difficulty": level,
-                                                  "grades": [grade]}))
+                identity = source_identity(row, source_titles) if mode == "source" else None
+                if identity and source_key(identity) in selected_identities:
+                    raise ValueError("повторён уже выбранный номер упражнения; выбери следующий целый номер")
+                if identity:
+                    selected_identities.add(source_key(identity))
+                exercise = exercise_fields({**row, "subject": subject, "topic": topic,
+                                            "subtopic": subtopic, "difficulty": level,
+                                            "grades": [grade]})
+                if identity:
+                    exercise.update({"source_material": identity[0], "source_number": identity[1]})
+                exercises.append(exercise)
             return JsonResponse({"exercises": exercises, "student_id": str(student.id) if student else None,
                                  "class_id": str(school_class.id) if school_class else None,
                                  "source_refs": source_refs})
