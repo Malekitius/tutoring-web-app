@@ -6,7 +6,12 @@
   <title>Кабинет преподавателя — классы</title>
   <link rel="stylesheet" href="/static/app.css?v=5">
   <link rel="stylesheet" href="/static/school.css?v=1">
-  <script src="/static/school-classes.js?v=1" defer></script>
+  <link rel="stylesheet" href="/static/materials.css?v=1">
+  <link rel="stylesheet" href="/static/vendor/katex/katex.min.css"><link rel="stylesheet" href="/static/assistant-widget.css?v=3">
+  <script src="/static/vendor/katex/katex.min.js" defer></script><script src="/static/vendor/katex/auto-render.min.js" defer></script>
+  <script src="/static/materials-panel.js?v=1" defer></script>
+  <script src="/static/school-classes.js?v=2" defer></script>
+  <script src="/static/assistant-widget.js?v=4" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -17,6 +22,7 @@
       <nav class="nav" aria-label="Разделы школы">
         <a class="nav-item active" href="/school/" aria-current="page"><span aria-hidden="true">▦</span> Классы</a>
         <a class="nav-item" href="/school/schedule/"><span aria-hidden="true">▤</span> Расписание</a>
+        <a class="nav-item" href="/school/assignments/"><span aria-hidden="true">◇</span> Задания</a>
         <a class="nav-item" href="/data/"><span aria-hidden="true">▣</span> Данные</a>
       </nav>
       <div class="sidebar-bottom"><div class="local-badge"><span class="local-dot"></span> Данные на этом компьютере</div><p>Классы и школьные ученики хранятся отдельно от индивидуальных занятий.</p></div>
@@ -37,5 +43,6 @@
     <form id="school-form"><div class="dialog-header"><div><div class="eyebrow">ШКОЛА</div><h2 id="school-dialog-title"></h2></div><button class="icon-button school-close" type="button" aria-label="Закрыть">×</button></div><div id="school-fields" class="dialog-fields"></div><div id="school-error" class="form-error" role="alert" hidden></div><div class="dialog-actions"><button class="button button-secondary school-close" type="button">Отмена</button><button class="button button-primary" type="submit">Сохранить</button></div></form>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  {% include "assistant-widget.html" %}
 </body>
 </html>

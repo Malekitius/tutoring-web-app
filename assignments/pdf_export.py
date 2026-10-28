@@ -55,10 +55,11 @@ def format_text(value):
 
 def build_source(worksheet, include_answers=False):
     title = escape_text(worksheet.title)
-    student = escape_text(worksheet.student.name)
+    owner = getattr(worksheet, "school_class", None) or worksheet.student
+    owner_label = "Класс" if getattr(worksheet, "school_class_id", None) else "Ученик"
     label = "Домашняя работа" if worksheet.kind == "homework" else "Задания на урок"
-    metadata = [r"\textbf{Ученик:} " + student]
-    if worksheet.lesson_id:
+    metadata = [r"\textbf{" + owner_label + ":} " + escape_text(owner.name)]
+    if getattr(worksheet, "lesson_id", None):
         metadata.append(r"\textbf{Занятие:} " + worksheet.lesson.date.strftime("%d.%m.%Y"))
     if worksheet.due_date:
         metadata.append(r"\textbf{Срок сдачи:} " + worksheet.due_date.strftime("%d.%m.%Y"))
@@ -79,6 +80,8 @@ def build_source(worksheet, include_answers=False):
                    format_text(item.prompt) + r"\par", r"\vspace{5mm}"]
         if include_answers:
             blocks += [r"\textbf{Решение:} " + (format_text(item.answer) if item.answer else "Не добавлено") + r"\par", r"\vspace{4mm}"]
+            if item.source_ref:
+                blocks += [r"{\small\color{forest} Источник: " + escape_text(item.source_ref) + r"}\par"]
         else:
             blocks += [r"\vspace{13mm}"]
     if not worksheet.items.exists():

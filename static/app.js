@@ -1,6 +1,7 @@
 const state = { students: [], current: null, query: "", editor: null };
 const listEl = document.querySelector("#student-list");
 const detailEl = document.querySelector("#detail-panel");
+const loadMaterials = window.MaterialsPanel.attach(detailEl, "student");
 const countEl = document.querySelector("#student-count");
 const dialog = document.querySelector("#editor-dialog");
 const form = document.querySelector("#editor-form");
@@ -72,6 +73,7 @@ async function loadStudents(preferredId) {
   if (nextId) localStorage.setItem("selectedStudent", nextId);
   else localStorage.removeItem("selectedStudent");
   render();
+  if (nextId) loadMaterials(nextId);
 }
 
 async function loadCurrent() {
@@ -192,6 +194,7 @@ function renderDetail() {
     <div class="section-title"><h3>Заметки</h3><button class="text-button" type="button" data-action="add-note">＋ Добавить заметку</button></div>
     <p class="notes-order-hint">Сначала высокий приоритет, затем средний, низкий и без приоритета. Внутри уровня — по ближайшему дедлайну; без дедлайна — сначала новые.</p>
     ${renderNotes(student.notes)}
+    <section class="materials-panel" data-materials-panel></section>
     <div class="foot-actions"><button class="text-button" type="button" data-action="delete-student">Удалить карточку ученика</button></div>`;
 }
 

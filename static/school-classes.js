@@ -6,6 +6,7 @@ const groups = [
 ];
 const state = {classes: [], current: null, query: '', group: 'all', editor: null};
 const dialog = $('#school-dialog');
+const loadMaterials = window.MaterialsPanel.attach($('#class-detail'), 'school_class');
 
 function esc(value) { return String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[char])); }
 function cookie(name) { return document.cookie.split('; ').find(part => part.startsWith(`${name}=`))?.split('=')[1] || ''; }
@@ -46,12 +47,14 @@ function renderDetail() {
   }
   const counts = Object.fromEntries(groups.map(([key]) => [key, item.students.filter(student => student.group === key).length]));
   const visibleGroups = state.group === 'all' ? groups : groups.filter(([key]) => key === state.group);
-  $('#class-detail').innerHTML = `<div class="detail-top"><div class="detail-intro"><div class="detail-avatar" aria-hidden="true">${esc(item.name.slice(0, 2).toUpperCase())}</div><div><h2>${esc(item.name)}</h2><div class="meta-line"><span>${esc(item.subject)}</span><span>•</span><span class="school-level">${esc(item.level)}</span></div></div></div><div class="school-detail-actions"><a class="button button-soft" href="/school/schedule/?class=${item.id}">Расписание</a><button class="button button-soft" type="button" data-action="edit-class">Редактировать</button></div></div>
+  $('#class-detail').innerHTML = `<div class="detail-top"><div class="detail-intro"><div class="detail-avatar" aria-hidden="true">${esc(item.name.slice(0, 2).toUpperCase())}</div><div><h2>${esc(item.name)}</h2><div class="meta-line"><span>${esc(item.subject)}</span><span>•</span><span class="school-level">${esc(item.level)}</span></div></div></div><div class="school-detail-actions"><a class="button button-soft" href="/school/schedule/?class=${item.id}">Расписание</a><a class="button button-soft" href="/school/assignments/?class=${item.id}">Создать задания</a><button class="button button-soft" type="button" data-action="edit-class">Редактировать</button></div></div>
     <div class="school-stat-line">${groups.map(([key, label]) => `<div class="stat"><strong>${counts[key]}</strong><small>${label}</small></div>`).join('')}</div>
     <div class="section-title"><h3>Ученики класса</h3><button class="text-button" type="button" data-action="add-student">＋ Добавить ученика</button></div>
     <div class="school-filter" role="group" aria-label="Фильтр по группе"><button type="button" data-group="all" class="${state.group === 'all' ? 'active' : ''}">Все · ${item.students.length}</button>${groups.map(([key, label]) => `<button type="button" data-group="${key}" class="${state.group === key ? 'active' : ''}">${label} · ${counts[key]}</button>`).join('')}</div>
     <div class="school-roster">${visibleGroups.map(([key, label]) => { const students = item.students.filter(student => student.group === key); return `<section class="school-group"><div class="school-group-heading"><h4>${label}</h4><span>${students.length}</span></div>${students.length ? students.map(student => `<article class="school-student"><div class="school-student-main"><strong>${esc(student.name)}</strong><small>${esc(dateLabel(student.birth_date))}</small>${student.comment ? `<p>${esc(student.comment)}</p>` : ''}</div><div class="school-student-actions"><button class="text-button" type="button" data-action="edit-student" data-id="${student.id}">Изменить</button><button class="text-button danger-text" type="button" data-action="delete-student" data-id="${student.id}">Удалить</button></div></article>`).join('') : '<div class="school-empty-group">Пока никого нет</div>'}</section>`; }).join('')}</div>
+    <section class="materials-panel" data-materials-panel></section>
     <div class="foot-actions"><button class="text-button danger-text" type="button" data-action="delete-class">Удалить класс</button></div>`;
+  loadMaterials(item.id);
 }
 function render() { renderList(); renderDetail(); }
 function openEditor(type, item = null) {

@@ -19,13 +19,14 @@ from django.db.utils import IntegrityError
 
 from assignments.models import Exercise, ExerciseGrade, Submission, Worksheet, WorksheetItem
 from finances.models import Payment
+from materials.models import Material, MaterialPage
 from schedule.models import Lesson, LessonComment, WeeklyRule
-from school.models import SchoolClass, SchoolLesson, SchoolStudent, SchoolWeeklyRule
+from school.models import SchoolClass, SchoolLesson, SchoolStudent, SchoolWeeklyRule, SchoolWorksheet, SchoolWorksheetItem
 from students.models import Student, Subject, Topic
 
 
 ARCHIVE_FORMAT = "tutoring-web-app.backup"
-ARCHIVE_VERSION = 2
+ARCHIVE_VERSION = 3
 MAX_ARCHIVE_BYTES = 1_000_000_000
 MAX_ARCHIVE_FILES = 20_000
 MAX_MANIFEST_BYTES = 5_000_000
@@ -33,11 +34,13 @@ MAX_RECORDS_BYTES = 500_000_000
 MODELS = (
     Student, Subject, Topic, WeeklyRule, Lesson, LessonComment,
     SchoolClass, SchoolStudent, SchoolWeeklyRule, SchoolLesson,
-    Exercise, ExerciseGrade, Worksheet, WorksheetItem, Submission, Payment,
+    Exercise, ExerciseGrade, Worksheet, WorksheetItem, SchoolWorksheet, SchoolWorksheetItem,
+    Material, MaterialPage, Submission, Payment,
 )
 MODEL_LABELS = {model._meta.label_lower for model in MODELS}
 MODELS_BY_LABEL = {model._meta.label_lower: model for model in MODELS}
 SCHOOL_LABELS = {model._meta.label_lower for model in (SchoolClass, SchoolStudent, SchoolWeeklyRule, SchoolLesson)}
+NEW_LABELS = {model._meta.label_lower for model in (SchoolWorksheet, SchoolWorksheetItem, Material, MaterialPage)}
 
 
 def _safe_media_name(value):
@@ -71,7 +74,8 @@ def create_archive():
                 rows = json.loads(serializers.serialize("json", model.objects.order_by("pk"), ensure_ascii=False))
                 records.extend(rows)
                 counts[model._meta.label_lower] = len(rows)
-            upload_names = sorted({_safe_media_name(name) for name in Submission.objects.values_list("file", flat=True)})
+            upload_names = sorted({_safe_media_name(name) for model in (Submission, Material)
+                                   for name in model.objects.values_list("file", flat=True)})
             records_bytes = json.dumps(records, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
             with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
                 files = {}
@@ -129,7 +133,7 @@ def inspect_archive(upload, media_stage=None):
             if sizes["manifest.json"] > MAX_MANIFEST_BYTES or sizes["records.json"] > MAX_RECORDS_BYTES:
                 raise ValueError("Служебные файлы архива слишком большие")
             manifest = json.loads(archive.read("manifest.json"))
-            if not isinstance(manifest, dict) or manifest.get("format") != ARCHIVE_FORMAT or manifest.get("version") not in (1, ARCHIVE_VERSION):
+            if not isinstance(manifest, dict) or manifest.get("format") != ARCHIVE_FORMAT or manifest.get("version") not in (1, 2, ARCHIVE_VERSION):
                 raise ValueError("Неподдерживаемый формат резервной копии")
             files = manifest.get("files")
             if not isinstance(files, dict) or set(names) != {"manifest.json", *files}:
@@ -157,9 +161,14 @@ def inspect_archive(upload, media_stage=None):
                 counts[row["model"]] += 1
                 if row["model"] == Submission._meta.label_lower:
                     submission_files.add(f"uploads/{_safe_media_name(row['fields'].get('file', ''))}")
-            expected_labels = MODEL_LABELS if manifest["version"] == ARCHIVE_VERSION else MODEL_LABELS - SCHOOL_LABELS
+                if row["model"] == Material._meta.label_lower:
+                    submission_files.add(f"uploads/{_safe_media_name(row['fields'].get('file', ''))}")
+            expected_labels = (MODEL_LABELS if manifest["version"] == ARCHIVE_VERSION else
+                               MODEL_LABELS - NEW_LABELS if manifest["version"] == 2 else
+                               MODEL_LABELS - NEW_LABELS - SCHOOL_LABELS)
             expected_counts = {label: counts[label] for label in expected_labels}
             if (manifest.get("counts") != expected_counts
+                    or (manifest["version"] < 3 and any(counts[label] for label in NEW_LABELS))
                     or (manifest["version"] == 1 and any(counts[label] for label in SCHOOL_LABELS))
                     or submission_files != set(files) - {"records.json"}):
                 raise ValueError("Содержимое архива не соответствует описанию")
@@ -213,14 +222,14 @@ def restore_archive(upload):
         old_media = data_root / f"uploads-before-restore-{uuid.uuid4().hex}"
         moved_old = moved_new = False
         try:
+            if media_root.exists():
+                media_root.rename(old_media)
+                moved_old = True
             with transaction.atomic():
                 for model in reversed(MODELS):
                     model.objects.all().delete()
                 for item in serializers.deserialize("json", json.dumps(records, ensure_ascii=False)):
                     item.save()
-                if media_root.exists():
-                    media_root.rename(old_media)
-                    moved_old = True
                 staged_media.rename(media_root)
                 moved_new = True
         except Exception as exc:

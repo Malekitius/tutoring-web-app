@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f7f5f0"><title>Кабинет преподавателя — расписание школы</title>
-  <link rel="stylesheet" href="/static/app.css?v=5"><link rel="stylesheet" href="/static/schedule.css?v=8"><link rel="stylesheet" href="/static/school.css?v=1">
-  <script src="/static/school-schedule.js?v=1" defer></script>
+  <link rel="stylesheet" href="/static/app.css?v=5"><link rel="stylesheet" href="/static/schedule.css?v=8"><link rel="stylesheet" href="/static/school.css?v=1"><link rel="stylesheet" href="/static/vendor/katex/katex.min.css"><link rel="stylesheet" href="/static/assistant-widget.css?v=3">
+  <script src="/static/vendor/katex/katex.min.js" defer></script><script src="/static/vendor/katex/auto-render.min.js" defer></script><script src="/static/school-schedule.js?v=1" defer></script><script src="/static/assistant-widget.js?v=4" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -12,7 +12,7 @@
       <div class="brand"><span class="brand-mark" aria-hidden="true">∑</span><div><strong>Кабинет<br>преподавателя</strong><small>Личное пространство</small></div></div>
       {% include "mode-switch.html" with mode="school" %}
       <div class="sidebar-label">ШКОЛА</div>
-      <nav class="nav" aria-label="Разделы школы"><a class="nav-item" href="/school/"><span aria-hidden="true">▦</span> Классы</a><a class="nav-item active" href="/school/schedule/" aria-current="page"><span aria-hidden="true">▤</span> Расписание</a><a class="nav-item" href="/data/"><span aria-hidden="true">▣</span> Данные</a></nav>
+      <nav class="nav" aria-label="Разделы школы"><a class="nav-item" href="/school/"><span aria-hidden="true">▦</span> Классы</a><a class="nav-item active" href="/school/schedule/" aria-current="page"><span aria-hidden="true">▤</span> Расписание</a><a class="nav-item" href="/school/assignments/"><span aria-hidden="true">◇</span> Задания</a><a class="nav-item" href="/data/"><span aria-hidden="true">▣</span> Данные</a></nav>
       <div class="sidebar-bottom"><div class="local-badge"><span class="local-dot"></span> Данные на этом компьютере</div><p>Школьные уроки и индивидуальные занятия проверяются на пересечения.</p></div>
     </aside>
     <main class="workspace schedule-workspace">
@@ -31,5 +31,6 @@
     <form id="school-series-form"><div class="dialog-header"><div><div class="eyebrow">ЕЖЕНЕДЕЛЬНЫЙ УРОК</div><h2 id="school-series-title">Изменить будущие уроки</h2></div><button class="icon-button series-close" type="button" aria-label="Закрыть">×</button></div><div class="dialog-fields"><p id="school-series-from" class="series-note"></p><label class="field"><span>Класс</span><select id="school-series-class" required></select></label><div class="field-row"><label class="field"><span>День недели</span><select id="school-series-weekday"><option value="0">Понедельник</option><option value="1">Вторник</option><option value="2">Среда</option><option value="3">Четверг</option><option value="4">Пятница</option><option value="5">Суббота</option><option value="6">Воскресенье</option></select></label><label class="field"><span>Начало</span><input id="school-series-time" type="time" step="300" required></label></div><div class="field-row"><label class="field"><span>Длительность, мин</span><input id="school-series-duration" type="number" min="15" max="240" step="5" required></label><label class="field"><span>Тема</span><input id="school-series-topic" maxlength="160"></label></div></div><div id="school-series-error" class="form-error" role="alert" hidden></div><div class="dialog-actions"><button class="button button-secondary series-close" type="button">Отмена</button><button class="button button-primary" type="submit">Сохранить серию</button></div></form>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  {% include "assistant-widget.html" %}
 </body>
 </html>

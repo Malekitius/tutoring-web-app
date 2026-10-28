@@ -12,4 +12,7 @@ urlpatterns = [
     path("schedule/lessons", views.lessons_collection),
     path("schedule/lessons/<uuid:lesson_id>", views.lesson_detail),
     path("schedule/rules/<uuid:rule_id>", views.rule_detail),
+    path("worksheets", views.worksheets_collection),
+    path("worksheets/<uuid:worksheet_id>", views.worksheet_detail),
+    path("worksheets/<uuid:worksheet_id>/pdf", views.worksheet_pdf),
 ]

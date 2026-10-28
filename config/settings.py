@@ -21,6 +21,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "students",
     "school",
+    "materials",
     "schedule",
     "finances",
     "assignments",

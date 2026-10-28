@@ -23,7 +23,8 @@ function count(map, keys) { return keys.reduce((sum, key) => sum + (map[key] || 
 function summary(map) {
   return `Ученики: ${count(map,['students.student'])} · предметы и темы: ${count(map,['students.subject','students.topic'])}\n`+
     `Расписание: ${count(map,['schedule.weeklyrule','schedule.lesson'])} · заметки: ${count(map,['schedule.lessoncomment'])}\n`+
-    `Школа: ${count(map,['school.schoolclass'])} классов, ${count(map,['school.schoolstudent'])} учеников, ${count(map,['school.schoollesson'])} уроков\n`+
+    `Школа: ${count(map,['school.schoolclass'])} классов, ${count(map,['school.schoolstudent'])} учеников, ${count(map,['school.schoollesson'])} уроков, ${count(map,['school.schoolworksheet'])} подборок\n`+
+    `PDF-материалы: ${count(map,['materials.material'])} файлов\n`+
     `Задачи и подборки: ${count(map,['assignments.exercise','assignments.worksheet'])} · работы: ${count(map,['assignments.submission'])}\n`+
     `Внесения: ${count(map,['finances.payment'])}`;
 }

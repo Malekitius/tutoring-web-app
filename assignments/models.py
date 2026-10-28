@@ -63,6 +63,7 @@ class WorksheetItem(models.Model):
     title = models.CharField(max_length=160)
     prompt = models.TextField(max_length=10000)
     answer = models.TextField(max_length=10000, blank=True)
+    source_ref = models.CharField(max_length=1200, blank=True)
 
     class Meta:
         ordering = ["position", "id"]

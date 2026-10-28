@@ -1,5 +1,6 @@
 """Provider boundary. Other vendors implement TextProvider; workflows stay unchanged."""
 
+import base64
 import json
 import os
 from dataclasses import dataclass
@@ -15,7 +16,18 @@ class ProviderError(Exception):
 
 
 class TextProvider(Protocol):
-    def complete(self, instructions: str, prompt: str, *, json_mode: bool = False) -> str: ...
+    def complete(self, instructions: str, prompt: str, *, json_mode: bool = False,
+                 files: list[tuple[str, bytes]] | None = None) -> str: ...
+
+
+def user_content(prompt, files):
+    if not files:
+        return prompt
+    content = [{"type": "input_text", "text": prompt}]
+    for name, data in files:
+        content.append({"type": "input_file", "filename": name,
+                        "file_data": "data:application/pdf;base64," + base64.b64encode(data).decode("ascii")})
+    return content
 
 
 @dataclass
@@ -23,11 +35,12 @@ class OpenAIResponsesProvider:
     api_key: str
     model: str
 
-    def complete(self, instructions: str, prompt: str, *, json_mode: bool = False) -> str:
+    def complete(self, instructions: str, prompt: str, *, json_mode: bool = False,
+                 files: list[tuple[str, bytes]] | None = None) -> str:
         payload = {
             "model": self.model,
             "instructions": instructions,
-            "input": [{"role": "user", "content": prompt}],
+            "input": [{"role": "user", "content": user_content(prompt, files)}],
             "store": False,
         }
         if json_mode:
@@ -61,7 +74,8 @@ class OpenAIResponsesProvider:
 class ChatGPTPlanProvider:
     """The same workflow via the user's authorized ChatGPT plan."""
 
-    def complete(self, instructions: str, prompt: str, *, json_mode: bool = False) -> str:
+    def complete(self, instructions: str, prompt: str, *, json_mode: bool = False,
+                 files: list[tuple[str, bytes]] | None = None) -> str:
         from .chatgpt_auth import credentials
 
         account = credentials()
@@ -70,7 +84,7 @@ class ChatGPTPlanProvider:
         payload = {
             "model": account["model"],
             "instructions": instructions,
-            "input": [{"role": "user", "content": prompt}],
+            "input": [{"role": "user", "content": user_content(prompt, files)}],
             "store": False,
             "stream": True,
         }

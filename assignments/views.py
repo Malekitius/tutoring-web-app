@@ -112,7 +112,7 @@ def serialize_exercise(item):
 def serialize_item(item):
     return {"id": str(item.id), "source_id": str(item.source_id) if item.source_id else None,
             "position": item.position, "title": item.title, "prompt": item.prompt,
-            "answer": item.answer}
+            "answer": item.answer, "source_ref": item.source_ref}
 
 
 def serialize_submission(item):

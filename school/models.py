@@ -87,3 +87,30 @@ class SchoolLesson(models.Model):
 
     def __str__(self):
         return f"{self.school_class} — {self.date} {self.time:%H:%M}"
+
+
+class SchoolWorksheet(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school_class = models.ForeignKey(SchoolClass, on_delete=models.CASCADE, related_name="worksheets")
+    kind = models.CharField(max_length=10, choices=[("lesson", "На уроке"), ("homework", "Домашнее задание")])
+    title = models.CharField(max_length=160)
+    instructions = models.TextField(blank=True)
+    due_date = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class SchoolWorksheetItem(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    worksheet = models.ForeignKey(SchoolWorksheet, on_delete=models.CASCADE, related_name="items")
+    source = models.ForeignKey("assignments.Exercise", on_delete=models.SET_NULL, null=True, blank=True)
+    position = models.PositiveSmallIntegerField(default=0)
+    title = models.CharField(max_length=160)
+    prompt = models.TextField()
+    answer = models.TextField(blank=True)
+    source_ref = models.CharField(max_length=1200, blank=True)
+
+    class Meta:
+        ordering = ["position", "id"]

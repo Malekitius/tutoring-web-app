@@ -6,14 +6,14 @@ from functools import wraps
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Count
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import ensure_csrf_cookie
 
 from schedule.views import parse_date, parse_time
 from students.views import body, fail, number, text
 
-from .models import SchoolClass, SchoolLesson, SchoolStudent, SchoolWeeklyRule
+from .models import SchoolClass, SchoolLesson, SchoolStudent, SchoolWeeklyRule, SchoolWorksheet
 from .services import (
     change_series, check_collision, check_one_off_future_collisions,
     check_rule_collision, end_series, ensure_occurrences,
@@ -46,6 +46,11 @@ def classes_page(request):
 @ensure_csrf_cookie
 def schedule_page(request):
     return render(request, "school-schedule.html")
+
+
+@ensure_csrf_cookie
+def assignments_page(request):
+    return render(request, "school-assignments.html")
 
 
 def find(model, item_id, label):
@@ -299,3 +304,48 @@ def rule_detail(request, rule_id):
         end_series(rule, from_date)
         return JsonResponse({"ok": True})
     return fail("Метод не поддерживается", 405)
+
+
+def serialize_worksheet(item):
+    return {"id": str(item.id), "class_id": str(item.school_class_id),
+            "class_name": item.school_class.name, "subject": item.school_class.subject,
+            "kind": item.kind, "title": item.title,
+            "due_date": item.due_date.isoformat() if item.due_date else None,
+            "created_at": item.created_at.isoformat(), "item_count": item.items.count()}
+
+
+@api_errors
+def worksheets_collection(request):
+    if request.method != "GET":
+        return fail("Метод не поддерживается", 405)
+    class_id = request.GET.get("class_id")
+    items = SchoolWorksheet.objects.select_related("school_class").prefetch_related("items")
+    if class_id:
+        try:
+            items = items.filter(school_class_id=class_id)
+        except (ValidationError, ValueError):
+            raise ValueError("Некорректный ID класса") from None
+    return JsonResponse([serialize_worksheet(item) for item in items], safe=False)
+
+
+@api_errors
+def worksheet_detail(request, worksheet_id):
+    if request.method != "DELETE":
+        return fail("Метод не поддерживается", 405)
+    item = find(SchoolWorksheet, worksheet_id, "Подборка")
+    item.delete()
+    return JsonResponse({"ok": True})
+
+
+@api_errors
+def worksheet_pdf(request, worksheet_id):
+    if request.method != "GET":
+        return fail("Метод не поддерживается", 405)
+    from assignments.pdf_export import build_pdf
+
+    item = find(SchoolWorksheet, worksheet_id, "Подборка")
+    answers = request.GET.get("solutions") == "1"
+    result = HttpResponse(build_pdf(item, include_answers=answers), content_type="application/pdf")
+    suffix = "solutions" if answers else "student"
+    result["Content-Disposition"] = f'attachment; filename="school-worksheet-{item.id}-{suffix}.pdf"'
+    return result

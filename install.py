@@ -18,7 +18,7 @@ from pathlib import Path
 
 
 APP_ITEMS = (
-    "assistant", "assignments", "config", "finances", "schedule", "school", "students",
+    "assistant", "assignments", "config", "finances", "materials", "schedule", "school", "students",
     "static", "docs", "manage.py", "run_local.py", "requirements.txt", "README.md",
 )
 SKIP_NAMES = {"__pycache__", ".DS_Store", "*.pyc", "*.pyo"}
