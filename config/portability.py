@@ -26,7 +26,8 @@ from students.models import Student, Subject, Topic
 
 
 ARCHIVE_FORMAT = "tutoring-web-app.backup"
-ARCHIVE_VERSION = 4
+ARCHIVE_VERSION = 5
+SCOPES = {"all": "Все данные", "tutoring": "Репетиторство", "school": "Школа"}
 MAX_ARCHIVE_BYTES = 1_000_000_000
 MAX_ARCHIVE_FILES = 20_000
 MAX_MANIFEST_BYTES = 5_000_000
@@ -42,6 +43,51 @@ MODELS_BY_LABEL = {model._meta.label_lower: model for model in MODELS}
 SCHOOL_LABELS = {model._meta.label_lower for model in (SchoolClass, SchoolStudent, SchoolWeeklyRule, SchoolLesson)}
 NEW_LABELS = {model._meta.label_lower for model in (SchoolWorksheet, SchoolWorksheetItem, Material, MaterialPage)}
 FIGURE_LABELS = {TaskFigure._meta.label_lower}
+TUTOR_MODELS = {Student, Subject, Topic, WeeklyRule, Lesson, LessonComment, Worksheet, WorksheetItem, Submission, Payment}
+SCHOOL_MODELS = {SchoolClass, SchoolStudent, SchoolWeeklyRule, SchoolLesson, SchoolWorksheet, SchoolWorksheetItem}
+FILE_MODELS = (Submission, Material, TaskFigure)
+
+
+def scope_querysets(scope="all"):
+    if scope not in SCOPES:
+        raise ValueError("Выберите данные для переноса")
+    result = {model: model.objects.all() if scope == "all" or model in (TUTOR_MODELS if scope == "tutoring" else SCHOOL_MODELS)
+              else model.objects.none() for model in MODELS}
+    if scope != "all":
+        owner = "student" if scope == "tutoring" else "school_class"
+        result[Material] = Material.objects.filter(**{f"{owner}__isnull": False})
+        result[MaterialPage] = MaterialPage.objects.filter(**{f"material__{owner}__isnull": False})
+        figure_owner = "worksheet_item" if scope == "tutoring" else "school_item"
+        result[TaskFigure] = TaskFigure.objects.filter(**{f"{figure_owner}__isnull": False})
+    return result
+
+
+def scope_counts(scope="all"):
+    return {model._meta.label_lower: rows.count() for model, rows in scope_querysets(scope).items()}
+
+
+def _scope_records(records, scope):
+    """Reject records outside the archive's declared teaching workspace."""
+    if scope == "all":
+        return
+    allowed = TUTOR_MODELS if scope == "tutoring" else SCHOOL_MODELS
+    allowed_labels = {model._meta.label_lower for model in allowed | {Material, MaterialPage, TaskFigure}}
+    for row in records:
+        if row["model"] not in allowed_labels:
+            raise ValueError("В архиве есть данные другого режима или общей библиотеки")
+        fields = row["fields"]
+        if row["model"] == Material._meta.label_lower:
+            owner, other = ("student", "school_class") if scope == "tutoring" else ("school_class", "student")
+            if not fields.get(owner) or fields.get(other) is not None:
+                raise ValueError("Материал не относится к выбранному режиму")
+        if row["model"] == TaskFigure._meta.label_lower:
+            owner, other = ("worksheet_item", "school_item") if scope == "tutoring" else ("school_item", "worksheet_item")
+            if not fields.get(owner) or fields.get(other) is not None or fields.get("exercise") is not None:
+                raise ValueError("Рисунок не относится к выбранному режиму")
+
+
+def _external_library_link(model, field, scope):
+    return scope != "all" and model in {WorksheetItem, SchoolWorksheetItem} and field.name == "source"
 
 
 def _safe_media_name(value):
@@ -64,19 +110,20 @@ def _write_file(archive, source, name):
     return {"sha256": digest.hexdigest(), "size": size}
 
 
-def create_archive():
+def create_archive(scope="all"):
     """Return a seekable temporary ZIP; the caller owns and closes it."""
     output = tempfile.SpooledTemporaryFile(max_size=16 * 1024 * 1024)
     try:
         with transaction.atomic():
+            querysets = scope_querysets(scope)
             records = []
             counts = {}
             for model in MODELS:
-                rows = json.loads(serializers.serialize("json", model.objects.order_by("pk"), ensure_ascii=False))
+                rows = json.loads(serializers.serialize("json", querysets[model].order_by("pk"), ensure_ascii=False))
                 records.extend(rows)
                 counts[model._meta.label_lower] = len(rows)
-            upload_names = sorted({_safe_media_name(name) for model in (Submission, Material, TaskFigure)
-                                   for name in model.objects.values_list("file", flat=True)})
+            upload_names = sorted({_safe_media_name(name) for model in FILE_MODELS
+                                   for name in querysets[model].values_list("file", flat=True)})
             records_bytes = json.dumps(records, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
             with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
                 files = {}
@@ -92,6 +139,7 @@ def create_archive():
                         files[f"uploads/{name}"] = _write_file(archive, source, f"uploads/{name}")
                 manifest = {
                     "format": ARCHIVE_FORMAT, "version": ARCHIVE_VERSION,
+                    "scope": scope,
                     "created_at": datetime.now(timezone.utc).isoformat(),
                     "counts": counts, "files": files,
                 }
@@ -117,7 +165,8 @@ def _copy_and_check(source, expected, target=None):
         raise ValueError("Контрольная сумма архива не совпадает")
 
 
-def inspect_archive(upload, media_stage=None):
+def inspect_archive(upload, media_stage=None, scope="all"):
+    scope_querysets(scope)
     if not upload or upload.size > MAX_ARCHIVE_BYTES:
         raise ValueError("Выберите архив размером до 1 ГБ")
     try:
@@ -134,8 +183,11 @@ def inspect_archive(upload, media_stage=None):
             if sizes["manifest.json"] > MAX_MANIFEST_BYTES or sizes["records.json"] > MAX_RECORDS_BYTES:
                 raise ValueError("Служебные файлы архива слишком большие")
             manifest = json.loads(archive.read("manifest.json"))
-            if not isinstance(manifest, dict) or manifest.get("format") != ARCHIVE_FORMAT or manifest.get("version") not in (1, 2, 3, ARCHIVE_VERSION):
+            if not isinstance(manifest, dict) or manifest.get("format") != ARCHIVE_FORMAT or manifest.get("version") not in (1, 2, 3, 4, ARCHIVE_VERSION):
                 raise ValueError("Неподдерживаемый формат резервной копии")
+            archive_scope = manifest.get("scope") if manifest["version"] >= 5 else "all"
+            if archive_scope not in SCOPES or archive_scope != scope:
+                raise ValueError("Архив не соответствует выбранному разделу данных")
             files = manifest.get("files")
             if not isinstance(files, dict) or set(names) != {"manifest.json", *files}:
                 raise ValueError("Неверный список файлов архива")
@@ -166,7 +218,8 @@ def inspect_archive(upload, media_stage=None):
                     submission_files.add(f"uploads/{_safe_media_name(row['fields'].get('file', ''))}")
                 if row["model"] == TaskFigure._meta.label_lower:
                     submission_files.add(f"uploads/{_safe_media_name(row['fields'].get('file', ''))}")
-            expected_labels = (MODEL_LABELS if manifest["version"] == ARCHIVE_VERSION else
+            _scope_records(records, scope)
+            expected_labels = (MODEL_LABELS if manifest["version"] >= 4 else
                                MODEL_LABELS - FIGURE_LABELS if manifest["version"] == 3 else
                                MODEL_LABELS - NEW_LABELS - FIGURE_LABELS if manifest["version"] == 2 else
                                MODEL_LABELS - NEW_LABELS - SCHOOL_LABELS - FIGURE_LABELS)
@@ -186,6 +239,11 @@ def inspect_archive(upload, media_stage=None):
                     if related_id is None:
                         if not field.null:
                             raise ValueError("В архиве отсутствует обязательная связь")
+                    elif _external_library_link(model, field, scope):
+                        try:
+                            uuid.UUID(str(related_id))
+                        except (ValueError, TypeError):
+                            raise ValueError("Некорректная ссылка на задачу библиотеки") from None
                     elif (field.related_model._meta.label_lower, str(related_id)) not in ids:
                         raise ValueError("В архиве есть ссылка на отсутствующую запись")
             try:
@@ -207,18 +265,44 @@ def inspect_archive(upload, media_stage=None):
         raise ValueError("Не удалось прочитать резервную копию") from exc
 
 
-def restore_archive(upload):
-    """Replace all application records, retaining a local recovery copy."""
+def restore_archive(upload, scope="all"):
+    """Replace the selected workspace and retain its previous recovery copy."""
     data_root = Path(settings.DATA_DIR)
     media_root = Path(settings.MEDIA_ROOT)
     with tempfile.TemporaryDirectory(prefix="restore-", dir=data_root) as staging:
         staged_media = Path(staging) / "uploads"
         staged_media.mkdir()
-        records, counts, _ = inspect_archive(upload, staged_media)
+        records, counts, _ = inspect_archive(upload, staged_media, scope)
+        querysets = scope_querysets(scope)
+        if scope != "all":
+            for row in records:
+                model = MODELS_BY_LABEL[row["model"]]
+                if model in {Material, TaskFigure} and model.objects.filter(pk=row["pk"]).exclude(pk__in=querysets[model]).exists():
+                    raise ValueError("ID записи из архива уже занят данными другого раздела")
+                if model in {WorksheetItem, SchoolWorksheetItem}:
+                    source_id = row["fields"].get("source")
+                    if source_id and not Exercise.objects.filter(pk=source_id).exists():
+                        row["fields"]["source"] = None
+            selected_files = {_safe_media_name(name) for model in FILE_MODELS
+                              for name in querysets[model].values_list("file", flat=True)}
+            protected_files = {_safe_media_name(name) for model in FILE_MODELS
+                               for name in model.objects.exclude(pk__in=querysets[model]).values_list("file", flat=True)}
+            incoming_files = {_safe_media_name(row["fields"]["file"]) for row in records
+                              if MODELS_BY_LABEL[row["model"]] in FILE_MODELS}
+            if incoming_files & protected_files:
+                raise ValueError("Файл из архива уже используется другим разделом")
+            complete_media = Path(staging) / "complete-uploads"
+            complete_media.mkdir()
+            if media_root.exists():
+                shutil.copytree(media_root, complete_media, dirs_exist_ok=True)
+            for name in selected_files - protected_files:
+                (complete_media / name).unlink(missing_ok=True)
+            shutil.copytree(staged_media, complete_media, dirs_exist_ok=True)
+            staged_media = complete_media
         backups = data_root / "backups"
         backups.mkdir(exist_ok=True)
-        recovery_path = backups / f"before-restore-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:8]}.zip"
-        current_archive = create_archive()
+        recovery_path = backups / f"before-restore-{scope}-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:8]}.zip"
+        current_archive = create_archive(scope)
         try:
             with recovery_path.open("wb") as target:
                 shutil.copyfileobj(current_archive, target)
@@ -232,8 +316,10 @@ def restore_archive(upload):
                 moved_old = True
             with transaction.atomic():
                 for model in reversed(MODELS):
-                    model.objects.all().delete()
+                    querysets[model].delete()
                 for item in serializers.deserialize("json", json.dumps(records, ensure_ascii=False)):
+                    if scope != "all" and isinstance(item.object, MaterialPage):
+                        item.object.pk = None
                     item.save()
                 staged_media.rename(media_root)
                 moved_new = True
@@ -247,4 +333,4 @@ def restore_archive(upload):
             raise
         if moved_old:
             shutil.rmtree(old_media)
-    return {"counts": counts, "recovery_file": recovery_path.name}
+    return {"counts": counts, "scope": scope, "recovery_file": recovery_path.name}
