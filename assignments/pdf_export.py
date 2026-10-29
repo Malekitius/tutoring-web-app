@@ -41,13 +41,18 @@ def validate_math(value):
     return value
 
 
+def format_math(value):
+    """Keep fraction operands at full size, including fractions inside fractions."""
+    return re.sub(r"\\(?:frac|tfrac)\b", lambda _: r"\dfrac", validate_math(value))
+
+
 def format_text(value):
     """Only $...$ segments are interpreted as TeX; ordinary text is escaped."""
     parts = re.split(r"(\$[^$\n]+\$)", value or "")
     formatted = []
     for part in parts:
         if part.startswith("$") and part.endswith("$") and len(part) > 2:
-            formatted.append(r"\(\displaystyle " + validate_math(part[1:-1]) + r"\)")
+            formatted.append(r"\(\displaystyle " + format_math(part[1:-1]) + r"\)")
         else:
             formatted.append(escape_text(part).replace("\n", r"\par " + "\n"))
     return "".join(formatted)
@@ -63,7 +68,7 @@ def format_body(value):
             continue
         equation = re.fullmatch(r"\$([^$]+)\$\s*([.,;:]?)", line)
         if equation:
-            paragraphs.append(r"\noindent\hspace*{7mm}\(\displaystyle " + validate_math(equation[1]) + equation[2] + r"\)\par")
+            paragraphs.append(r"\noindent\hspace*{7mm}\(\displaystyle " + format_math(equation[1]) + equation[2] + r"\)\par")
         else:
             hanging = r"\hangindent=7mm\hangafter=1 " if re.match(r"^(?:[а-яa-z]|\d{1,2})\)\s", line, re.I) else ""
             paragraphs.append(hanging + format_text(line) + r"\par")

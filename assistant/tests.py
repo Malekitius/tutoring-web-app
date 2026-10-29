@@ -250,7 +250,7 @@ class AssistantWorkflowTest(TestCase):
         self.assertEqual(provider_factory.return_value.complete.call_count, 2)
 
     def test_common_generated_latex_commands_are_pdf_safe(self):
-        self.assertIn(r"\boxed{\frac{1}{2}\,x}", format_text(r"Ответ: $\boxed{\frac{1}{2}\,x}$"))
+        self.assertIn(r"\boxed{\dfrac{1}{2}\,x}", format_text(r"Ответ: $\boxed{\frac{1}{2}\,x}$"))
 
     def test_accept_is_atomic_and_requires_csrf(self):
         good = {"title": "Задача", "prompt": "Решите $x+1=2$", "answer": "$x=1$",

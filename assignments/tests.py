@@ -282,6 +282,21 @@ class AssignmentFlowTests(TestCase):
         self.assertEqual(Submission.objects.count(), 0)
 
     @skipUnless(shutil.which("xelatex"), "XeLaTeX не установлен")
+    def test_nested_fractions_keep_operand_font_size_in_pdf(self):
+        sheet = Worksheet.objects.create(student=self.student, kind="lesson", title="Составная дробь")
+        WorksheetItem.objects.create(worksheet=sheet, position=1, title="Вычислите",
+                                     prompt=r"$\frac{\frac{2}{3}}{\tfrac{5}{9}}$.")
+        sizes = []
+        def collect(text, cm, tm, font, size):
+            digits = text.strip()
+            if digits and set(digits) <= set("2359"):
+                sizes.append(size)
+        PdfReader(io.BytesIO(build_pdf(sheet))).pages[0].extract_text(visitor_text=collect)
+        self.assertGreaterEqual(len(sizes), 4)
+        self.assertLess(max(sizes) - min(sizes), .1)
+        self.assertGreater(min(sizes), 14)
+
+    @skipUnless(shutil.which("xelatex"), "XeLaTeX не установлен")
     def test_pdf_keeps_regular_tasks_together_and_splits_oversized_tasks(self):
         sheet = Worksheet.objects.create(student=self.student, kind="lesson", title="Pagination")
         for index in range(4):
