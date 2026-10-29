@@ -47,10 +47,27 @@ def format_text(value):
     formatted = []
     for part in parts:
         if part.startswith("$") and part.endswith("$") and len(part) > 2:
-            formatted.append(r"\(" + validate_math(part[1:-1]) + r"\)")
+            formatted.append(r"\(\displaystyle " + validate_math(part[1:-1]) + r"\)")
         else:
             formatted.append(escape_text(part).replace("\n", r"\par " + "\n"))
     return "".join(formatted)
+
+
+def format_body(value):
+    """Give paragraphs, lettered subparts and standalone formulas room to breathe."""
+    paragraphs = []
+    for line in (value or "").splitlines():
+        line = line.strip()
+        if not line:
+            paragraphs.append(r"\smallskip")
+            continue
+        equation = re.fullmatch(r"\$([^$]+)\$\s*([.,;:]?)", line)
+        if equation:
+            paragraphs.append(r"\noindent\hspace*{7mm}\(\displaystyle " + validate_math(equation[1]) + equation[2] + r"\)\par")
+        else:
+            hanging = r"\hangindent=7mm\hangafter=1 " if re.match(r"^(?:[а-яa-z]|\d{1,2})\)\s", line, re.I) else ""
+            paragraphs.append(hanging + format_text(line) + r"\par")
+    return "\n".join(paragraphs)
 
 
 def build_source(worksheet, include_answers=False, figure_paths=None):
@@ -63,32 +80,52 @@ def build_source(worksheet, include_answers=False, figure_paths=None):
         metadata.append(r"\textbf{Занятие:} " + worksheet.lesson.date.strftime("%d.%m.%Y"))
     if worksheet.due_date:
         metadata.append(r"\textbf{Срок сдачи:} " + worksheet.due_date.strftime("%d.%m.%Y"))
-    blocks = [r"\documentclass[11pt,a4paper]{article}",
+    items = list(worksheet.items.prefetch_related("figures").all())
+    blocks = [r"\documentclass[12pt,a4paper,fleqn]{article}",
               r"\usepackage{fontspec}", r"\usepackage{amsmath,amssymb,xcolor,graphicx}",
-              r"\usepackage[margin=20mm]{geometry}", r"\setmainfont{Arial}",
+              r"\usepackage[russian]{babel}",
+              r"\usepackage{needspace,fancyhdr}",
+              r"\usepackage[left=19mm,right=19mm,top=18mm,bottom=22mm,footskip=11mm]{geometry}",
+              r"\setmainfont{Arial}",
               r"\setsansfont{Arial}", r"\definecolor{forest}{HTML}{285A43}",
-              r"\setlength{\parindent}{0pt}", r"\setlength{\parskip}{5pt}",
+              r"\definecolor{muted}{HTML}{66716A}", r"\definecolor{rulegray}{HTML}{DCE3DD}",
+              r"\DeclareMathSizes{12}{15}{10.5}{8}",
+              r"\linespread{1.12}", r"\setlength{\parindent}{0pt}", r"\setlength{\parskip}{5pt}",
+              r"\setlength{\mathindent}{7mm}",
+              r"\setlength{\abovedisplayskip}{7pt}\setlength{\belowdisplayskip}{7pt}",
+              r"\setlength{\abovedisplayshortskip}{4pt}\setlength{\belowdisplayshortskip}{7pt}",
+              r"\emergencystretch=2em\raggedbottom\frenchspacing",
+              r"\clubpenalty=10000\widowpenalty=10000\displaywidowpenalty=10000",
+              r"\newbox\taskbox",
+              r"\newenvironment{taskblock}{\par\addvspace{4mm}\setbox\taskbox=\vbox\bgroup\hsize=\linewidth}{\par\egroup\ifdim\dimexpr\ht\taskbox+\dp\taskbox\relax<.85\textheight\Needspace{\dimexpr\ht\taskbox+\dp\taskbox\relax}\box\taskbox\else\Needspace{40mm}\unvbox\taskbox\fi\par}",
+              r"\pagestyle{fancy}\fancyhf{}\renewcommand{\headrulewidth}{0pt}",
+              r"\renewcommand{\footrulewidth}{0.3pt}",
+              r"\fancyfoot[L]{\footnotesize\color{muted} " + label + (" / Решения" if include_answers else "") + "}",
+              r"\fancyfoot[R]{\footnotesize\color{muted}\thepage}",
               r"\begin{document}",
-              r"{\small\bfseries\color{forest} " + label.upper() + (" / РЕШЕНИЯ" if include_answers else "") + r"}\par\vspace{2mm}",
-              r"{\LARGE\bfseries " + title + r"}\par",
-              r"\vspace{3mm}", r"\small " + r"\quad \textbar{} \quad ".join(metadata) + r"\normalsize",
-              r"\vspace{4mm}\hrule\vspace{4mm}"]
+              r"{\fontsize{10}{13}\selectfont\bfseries\color{forest} " + label.upper() + (" / РЕШЕНИЯ" if include_answers else "") + r"}\par\vspace{2mm}",
+              r"{\fontsize{23}{28}\selectfont\bfseries " + title + r"}\par",
+              r"\vspace{2mm}{\small\color{muted} " + r"\par ".join(metadata) + r"\par}",
+              r"\vspace{4mm}{\color{forest}\hrule height 1pt}\vspace{5mm}"]
     if worksheet.instructions:
-        blocks += [r"\textbf{Инструкция.} " + format_text(worksheet.instructions) + r"\par", r"\vspace{3mm}"]
-    for index, item in enumerate(worksheet.items.all(), start=1):
-        blocks += [r"\textbf{Задача " + str(index) + r". " + escape_text(item.title) + r"}\par",
-                   format_text(item.prompt) + r"\par", r"\vspace{5mm}"]
-        for figure in item.figures.all():
+        blocks += [r"{\small\bfseries\color{forest} КАК РАБОТАТЬ}\par", format_body(worksheet.instructions), r"\vspace{4mm}"]
+    for index, item in enumerate(items, start=1):
+        figures = list(item.figures.all())
+        blocks += [r"\begin{taskblock}",
+                   r"\noindent\begin{minipage}[t]{10mm}\vspace{0pt}{\color{forest}\fontsize{16}{19}\selectfont\bfseries " + f"{index:02}" + r"}\end{minipage}%",
+                   r"\begin{minipage}[t]{\dimexpr\linewidth-10mm\relax}\vspace{0pt}{\fontsize{13}{17}\selectfont\bfseries " + escape_text(item.title) + r"}\end{minipage}\par\nobreak\vspace{2mm}",
+                   format_body(item.prompt)]
+        for figure in figures:
             path = (figure_paths or {}).get(str(figure.id))
             if path:
-                blocks += [r"\begin{center}\includegraphics[width=.88\linewidth,height=72mm,keepaspectratio]{" + path + r"}\end{center}"]
+                blocks += [r"\par\vspace{2mm}{\centering\includegraphics[width=.90\linewidth,height=68mm,keepaspectratio]{" + path + r"}\par}\vspace{3mm}"]
         if include_answers:
-            blocks += [r"\textbf{Решение:} " + (format_text(item.answer) if item.answer else "Не добавлено") + r"\par", r"\vspace{4mm}"]
+            blocks += [r"\par\nobreak\vspace{2mm}{\small\bfseries\color{forest} РЕШЕНИЕ И ОТВЕТ}\par\nobreak",
+                       format_body(item.answer) if item.answer else "Решение не добавлено.\\par"]
             if item.source_ref:
-                blocks += [r"{\small\color{forest} Источник: " + escape_text(item.source_ref) + r"}\par"]
-        else:
-            blocks += [r"\vspace{13mm}"]
-    if not worksheet.items.exists():
+                blocks += [r"{\footnotesize\color{muted} Источник: " + escape_text(item.source_ref) + r"\par}"]
+        blocks += [r"\end{taskblock}"]
+    if not items:
         blocks.append("Задачи пока не добавлены.")
     blocks += [r"\end{document}"]
     return "\n".join(blocks)

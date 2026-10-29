@@ -282,6 +282,21 @@ class AssignmentFlowTests(TestCase):
         self.assertEqual(Submission.objects.count(), 0)
 
     @skipUnless(shutil.which("xelatex"), "XeLaTeX не установлен")
+    def test_pdf_keeps_regular_tasks_together_and_splits_oversized_tasks(self):
+        sheet = Worksheet.objects.create(student=self.student, kind="lesson", title="Pagination")
+        for index in range(4):
+            WorksheetItem.objects.create(worksheet=sheet, position=index, title=f"ShortTask{index}",
+                prompt="\n".join(["Explain the method and write each step of the calculation." for _ in range(6)]) + f"\nEndTask{index}")
+        WorksheetItem.objects.create(worksheet=sheet, position=5, title="OversizedTask",
+            prompt="\n".join(f"Line {index}: explain the calculation and justify your answer." for index in range(65)) + "\nEndLongTask")
+        pages = ["".join(page.extract_text().split()) for page in PdfReader(io.BytesIO(build_pdf(sheet))).pages]
+        self.assertGreater(len(pages), 2)
+        for index in range(4):
+            self.assertTrue(any(f"ShortTask{index}" in page and f"EndTask{index}" in page for page in pages), repr(pages))
+        self.assertIn("EndLongTask", "\n".join(pages))
+        self.assertFalse(any("OversizedTask" in page and "EndLongTask" in page for page in pages))
+
+    @skipUnless(shutil.which("xelatex"), "XeLaTeX не установлен")
     def test_pdf_export_with_math_and_separate_answers(self):
         sheet = Worksheet.objects.create(student=self.student, kind="homework", title="Дроби")
         WorksheetItem.objects.create(worksheet=sheet, position=1, title="Сложение",

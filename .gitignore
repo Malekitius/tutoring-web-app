@@ -16,3 +16,5 @@ tutor.db-*
 !.env.example
 *-preview.png
 preview-*.png
+/output/
+/tmp/
