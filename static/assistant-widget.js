@@ -3,6 +3,13 @@
   const panel = $('#helper-panel');
   const toggle = $('#helper-toggle');
   const form = $('#helper-form');
+  const modelSelect = $('#helper-model');
+  const effortSelect = $('#helper-effort');
+  const effortNames = {auto: 'Авто', low: 'Низкий', medium: 'Средний', high: 'Высокий',
+    xhigh: 'Очень высокий', max: 'Максимальный'};
+  let modelOptions = [];
+  let planReady = false;
+  let optionsLoaded = false;
   const cookie = name => document.cookie.split('; ').find(part => part.startsWith(`${name}=`))?.split('=')[1] || '';
 
   async function api(path, method = 'GET', payload) {
@@ -143,8 +150,88 @@
     panel.hidden = !open;
     toggle.setAttribute('aria-expanded', String(open));
     toggle.setAttribute('aria-label', open ? 'Скрыть помощника' : 'Открыть помощника');
-    if (open) form.elements.question.focus();
+    if (open) {
+      form.elements.question.focus();
+      if (planReady && !optionsLoaded) loadModelOptions();
+    }
   }
+
+  function setPlanReady(ready) {
+    planReady = ready;
+    $('#helper-model-settings').hidden = !ready;
+    if (!ready) {
+      optionsLoaded = false;
+      modelOptions = [];
+    }
+  }
+
+  function fillEfforts(preferred = 'auto') {
+    const model = modelOptions.find(item => item.slug === modelSelect.value);
+    const efforts = model?.efforts || ['auto'];
+    effortSelect.replaceChildren(...efforts.map(effort => {
+      const option = document.createElement('option');
+      option.value = effort;
+      option.textContent = effortNames[effort] || effort;
+      return option;
+    }));
+    effortSelect.value = efforts.includes(preferred) ? preferred : 'auto';
+    effortSelect.disabled = !model;
+  }
+
+  async function loadModelOptions() {
+    modelSelect.disabled = true;
+    effortSelect.disabled = true;
+    $('#helper-model-message').textContent = 'Загружаем доступные модели…';
+    try {
+      const result = await api('/api/assistant/models');
+      if (!planReady) return;
+      modelOptions = result.models;
+      modelSelect.replaceChildren(...modelOptions.map(model => {
+        const option = document.createElement('option');
+        option.value = model.slug;
+        option.textContent = model.name;
+        return option;
+      }));
+      const available = modelOptions.some(model => model.slug === result.model);
+      if (!available) {
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Выберите модель';
+        modelSelect.prepend(placeholder);
+      }
+      modelSelect.value = available ? result.model : '';
+      fillEfforts(result.reasoning_effort);
+      modelSelect.disabled = false;
+      optionsLoaded = true;
+      $('#helper-model-message').textContent = available ? 'Выбор сохраняется для всех разделов.' : 'Выберите актуальную модель.';
+    } catch (error) {
+      optionsLoaded = false;
+      $('#helper-model-message').textContent = error.message;
+    }
+  }
+
+  async function saveModelOptions() {
+    if (!modelSelect.value) return;
+    modelSelect.disabled = true;
+    effortSelect.disabled = true;
+    $('#helper-model-message').textContent = 'Сохраняем…';
+    try {
+      await api('/api/assistant/models', 'POST', {model: modelSelect.value, reasoning_effort: effortSelect.value});
+      $('#helper-model-message').textContent = 'Сохранено для помощника и генерации задач.';
+    } catch (error) {
+      await loadModelOptions();
+      $('#helper-model-message').textContent = error.message;
+    } finally {
+      modelSelect.disabled = !planReady || !optionsLoaded;
+      effortSelect.disabled = !planReady || !optionsLoaded || !modelSelect.value;
+    }
+  }
+
+  modelSelect.addEventListener('change', () => {
+    fillEfforts(effortSelect.value);
+    saveModelOptions();
+  });
+  effortSelect.addEventListener('change', saveModelOptions);
 
   toggle.addEventListener('click', () => show(panel.hidden));
   $('#helper-close').addEventListener('click', () => show(false));
@@ -156,6 +243,7 @@
     $('#helper-status').textContent = 'Сессия ChatGPT истекла. Подключите ChatGPT заново.';
     $('#helper-connect').hidden = false;
     $('#helper-disconnect').hidden = true;
+    setPlanReady(false);
     show(true);
   });
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && !panel.hidden) show(false); });
@@ -194,6 +282,7 @@
       $('#helper-status').textContent = result.revoked ? 'ChatGPT отключён' : 'Отключено локально; проверьте доступ в настройках ChatGPT';
       $('#helper-connect').hidden = false;
       $('#helper-disconnect').hidden = true;
+      setPlanReady(false);
     } catch (error) { $('#helper-status').textContent = error.message; }
   });
 
@@ -204,6 +293,7 @@
       $('#helper-status').textContent = status.message;
       $('#helper-connect').hidden = status.ready;
       $('#helper-disconnect').hidden = status.mode !== 'chatgpt_plan';
+      setPlanReady(status.mode === 'chatgpt_plan');
       if (params.has('auth_error') || params.has('connected')) {
         if (params.has('auth_error')) $('#helper-status').textContent = params.get('auth_error');
         show(true);

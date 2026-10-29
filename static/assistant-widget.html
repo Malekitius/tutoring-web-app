@@ -1,6 +1,14 @@
 <aside id="assistant-widget" class="helper-widget" aria-label="Помощник">
   <section id="helper-panel" class="helper-panel" aria-labelledby="helper-title" hidden>
     <header class="helper-head"><div><span class="helper-eyebrow">ВСЕГДА ПОД РУКОЙ</span><h2 id="helper-title">Помощник</h2></div><button id="helper-close" type="button" aria-label="Закрыть помощника">×</button></header>
+    <div id="helper-model-settings" class="helper-model-settings" hidden>
+      <div class="helper-model-fields">
+        <label>Модель<select id="helper-model" aria-label="Модель ChatGPT"></select></label>
+        <label>Thinking mode<select id="helper-effort" aria-label="Уровень размышления"></select></label>
+      </div>
+      <p id="helper-model-message" role="status" aria-live="polite">Загружаем доступные модели…</p>
+      <p class="helper-model-hint">Настройка действует для помощника и генерации задач.</p>
+    </div>
     <form id="helper-form">
       <label><span>Ваш вопрос</span><textarea name="question" maxlength="2000" required></textarea></label>
       <button class="helper-submit" type="submit">Спросить <span aria-hidden="true">↗</span></button>

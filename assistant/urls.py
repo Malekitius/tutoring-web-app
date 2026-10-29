@@ -5,6 +5,7 @@ from . import views
 
 urlpatterns = [
     path("status", views.status),
+    path("models", views.model_options),
     path("ask", views.ask),
     path("students/<uuid:student_id>/ask", views.ask_student),
     path("generate", views.generate_exercises),

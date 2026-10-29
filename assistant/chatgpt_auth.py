@@ -36,7 +36,16 @@ UNUSABLE_REFRESH_CODES = {
     "invalid_grant", "invalid_refresh_token", "token_expired", "refresh_token_expired",
     "refresh_token_invalidated", "refresh_token_reused",
 }
-TOKEN_FIELDS = ("access_token", "refresh_token", "id_token", "expires_at", "scopes", "model")
+TOKEN_FIELDS = ("access_token", "refresh_token", "id_token", "expires_at", "scopes", "model", "reasoning_effort")
+EFFORT_LABELS = {"auto": "Авто", "low": "Низкий", "medium": "Средний", "high": "Высокий",
+                 "xhigh": "Очень высокий", "max": "Максимальный"}
+
+
+def supported_efforts(model: str) -> list[str]:
+    """Only offer explicit effort for model families with documented support."""
+    if re.match(r"^gpt-(?:6(?:\.|-|$)|5\.6(?:-|$))", model):
+        return list(EFFORT_LABELS)
+    return ["auto"]
 
 
 class OAuthTokenError(ProviderError):
@@ -122,6 +131,40 @@ def _get_json(url: str, token: str | None = None) -> dict:
             return json.load(response)
     except (HTTPError, URLError, TimeoutError) as exc:
         raise ProviderError("Не удалось получить данные для входа через ChatGPT.") from exc
+
+
+def available_models(account: dict) -> list[dict]:
+    try:
+        catalog = _get_json(f"{RESOURCE}/models", account["access_token"])
+    except ProviderError as exc:
+        raise ProviderError("Не удалось загрузить список моделей ChatGPT.") from exc
+    entries = catalog.get("models", []) if isinstance(catalog, dict) else []
+    if not isinstance(entries, list):
+        entries = []
+    models = []
+    seen = set()
+    for item in entries:
+        if not isinstance(item, dict) or item.get("visibility") != "list":
+            continue
+        slug = item.get("slug")
+        if not isinstance(slug, str) or not re.fullmatch(r"[a-zA-Z0-9_.-]{1,100}", slug) or slug in seen:
+            continue
+        seen.add(slug)
+        name = item.get("display_name")
+        models.append({"slug": slug, "name": name[:100] if isinstance(name, str) and name else slug,
+                       "efforts": supported_efforts(slug)})
+    if not models:
+        raise ProviderError("Для аккаунта ChatGPT нет доступных моделей.")
+    return models
+
+
+def save_preferences(account: dict, model: str, effort: str) -> None:
+    with auth_lock():
+        record = _read()
+        if record.get("client_id") != account.get("client_id") or record.get("subject") != account.get("subject"):
+            raise ProviderError("Аккаунт ChatGPT изменился. Обновите страницу.")
+        record.update({"model": model, "reasoning_effort": effort})
+        _write(record)
 
 
 def _b64url(data: bytes) -> str:
@@ -218,17 +261,18 @@ def finish(request) -> None:
         record = _read()
         if record.get("subject") and record["subject"] != claims["sub"] and pending["client_id"] != "dynamic_agent_client":
             raise ProviderError("Вход выполнен в другой аккаунт ChatGPT.")
-        models = _get_json(f"{RESOURCE}/models", tokens["access_token"]).get("models", [])
-        available = [item for item in models if item.get("visibility") == "list" and item.get("slug")]
-        if not available:
-            raise ProviderError("Для аккаунта ChatGPT нет доступной модели.")
+        available = available_models(tokens)
         record.update({
             "client_id": client_id, "subject": claims["sub"],
             "email": claims.get("email", ""), "id_token": tokens["id_token"],
             "access_token": tokens["access_token"], "refresh_token": tokens["refresh_token"],
             "scopes": tokens["scope"].split(), "expires_at": time.time() + int(tokens.get("expires_in", 3600)),
-            "model": available[0]["slug"],
+            "model": record.get("model") if record.get("model") in {item["slug"] for item in available}
+                     else available[0]["slug"],
+            "reasoning_effort": record.get("reasoning_effort", "auto"),
         })
+        if record["reasoning_effort"] not in supported_efforts(record["model"]):
+            record["reasoning_effort"] = "auto"
         _write(record)
 
 

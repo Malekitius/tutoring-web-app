@@ -88,6 +88,9 @@ class ChatGPTPlanProvider:
             "store": False,
             "stream": True,
         }
+        effort = account.get("reasoning_effort", "auto")
+        if effort != "auto":
+            payload["reasoning"] = {"effort": effort}
         # The preview route has a narrower request contract; JSON is requested in the prompt.
         request = Request(
             "https://api.openai.com/v1/responses",
@@ -121,6 +124,8 @@ class ChatGPTPlanProvider:
         except HTTPError as exc:
             if exc.code == 401:
                 raise ProviderError("Сессия ChatGPT недействительна. Подключите аккаунт заново.") from exc
+            if exc.code == 400:
+                raise ProviderError("Модель не приняла выбранный режим thinking. Выберите «Авто» или другую модель.") from exc
             if exc.code == 429:
                 raise ProviderError("Достигнут лимит подписки ChatGPT. Попробуйте позже.") from exc
             raise ProviderError(f"Сервис модели вернул ошибку {exc.code}.") from exc

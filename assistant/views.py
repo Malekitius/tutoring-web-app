@@ -134,6 +134,35 @@ def status(request):
 
 
 @api_errors
+def model_options(request):
+    if request.method not in {"GET", "POST"}:
+        return fail("Метод не поддерживается", 405)
+    try:
+        provider = get_provider()
+        if not isinstance(provider, ChatGPTPlanProvider):
+            return fail("Настройка доступна при подключении подписки ChatGPT.", 409)
+        account = chatgpt_auth.credentials()
+        if not account:
+            return fail("Подключите ChatGPT заново.", 503)
+        models = chatgpt_auth.available_models(account)
+        if request.method == "POST":
+            data = body(request)
+            model = data.get("model")
+            effort = data.get("reasoning_effort")
+            selected = next((item for item in models if item["slug"] == model), None)
+            if selected is None:
+                return fail("Выберите доступную модель ChatGPT.")
+            if effort not in selected["efforts"]:
+                return fail("Выбранный режим thinking недоступен для этой модели.")
+            chatgpt_auth.save_preferences(account, model, effort)
+            account.update({"model": model, "reasoning_effort": effort})
+        return JsonResponse({"models": models, "model": account.get("model"),
+                             "reasoning_effort": account.get("reasoning_effort", "auto")})
+    except ProviderError as exc:
+        return fail(str(exc), 503)
+
+
+@api_errors
 def auth_start(request):
     if request.method != "POST":
         return fail("Метод не поддерживается", 405)

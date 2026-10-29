@@ -377,6 +377,32 @@ class ChatGPTLoginTest(TestCase):
         self.assertEqual(second["access_token"], "new-access")
         self.assertEqual(chatgpt_auth._read()["refresh_token"], "new-refresh")
 
+    @patch("assistant.chatgpt_auth._get_json")
+    def test_model_picker_lists_account_models_and_saves_thinking_level(self, get_json):
+        chatgpt_auth._write({
+            "client_id": "oaiapp_test", "subject": "test-account", "access_token": "private-access",
+            "refresh_token": "private-refresh", "scopes": ["chatgpt.tokens.use.direct"],
+            "expires_at": time.time() + 3600, "model": "gpt-6.1-sol",
+        })
+        get_json.return_value = {"models": [
+            {"slug": "gpt-6.1-sol", "display_name": "GPT-6.1 Sol", "visibility": "list"},
+            {"slug": "gpt-6-luna", "display_name": "GPT-6 Luna", "visibility": "list"},
+            {"slug": "hidden-model", "visibility": "hidden"},
+        ]}
+        initial = self.client.get("/api/assistant/models")
+        self.assertEqual(initial.status_code, 200)
+        self.assertEqual([item["slug"] for item in initial.json()["models"]], ["gpt-6.1-sol", "gpt-6-luna"])
+        self.assertNotIn("private-access", str(initial.json()))
+        invalid = self.client.post("/api/assistant/models", data=json.dumps({
+            "model": "hidden-model", "reasoning_effort": "low"}), content_type="application/json", **self.csrf)
+        self.assertEqual(invalid.status_code, 400)
+        saved = self.client.post("/api/assistant/models", data=json.dumps({
+            "model": "gpt-6-luna", "reasoning_effort": "low"}), content_type="application/json", **self.csrf)
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(chatgpt_auth._read()["model"], "gpt-6-luna")
+        self.assertEqual(chatgpt_auth._read()["reasoning_effort"], "low")
+        self.assertEqual(self.client.get("/api/assistant/models").json()["reasoning_effort"], "low")
+
     @patch("assistant.chatgpt_auth.jwt.decode")
     @patch("assistant.chatgpt_auth.jwt.PyJWKClient")
     @patch("assistant.chatgpt_auth._get_json")
@@ -427,7 +453,13 @@ class PlanProviderTest(TestCase):
         self.assertEqual(payload["store"], False)
         self.assertEqual(payload["stream"], True)
         self.assertEqual(payload["model"], "test-model")
+        self.assertNotIn("reasoning", payload)
         self.assertIsInstance(urlopen.call_args.kwargs["context"], ssl.SSLContext)
+        credentials.return_value["reasoning_effort"] = "low"
+        urlopen.return_value = io.BytesIO("".join(f"data: {json.dumps(event)}\n\n" for event in events).encode())
+        ChatGPTPlanProvider().complete("Правила", "Вопрос")
+        payload = json.loads(urlopen.call_args.args[0].data)
+        self.assertEqual(payload["reasoning"], {"effort": "low"})
         urlopen.return_value = io.BytesIO(b'data: {"type":"response.output_text.delta","delta":"partial"}\n\n')
         with self.assertRaises(ProviderError):
             ChatGPTPlanProvider().complete("Правила", "Вопрос")
