@@ -78,7 +78,8 @@ async function saveEditor(event) {
   finally { save.disabled = false; }
 }
 async function remove(type, id) {
-  if (!window.confirm(type === 'class' ? 'Удалить класс вместе с его учениками и школьными уроками?' : 'Удалить ученика из этого класса?')) return;
+  if (!await window.AppDialogs.confirm(type === 'class' ? 'Вместе с классом будут удалены его ученики, уроки, материалы и подборки.' : 'Ученик будет удалён только из этого класса.',
+    {title: type === 'class' ? 'Удалить класс?' : 'Удалить ученика класса?'})) return;
   try {
     await api(type === 'class' ? `/api/school/classes/${id}` : `/api/school/students/${id}`, 'DELETE');
     await loadClasses(type === 'class' ? null : state.current.id); toast('Удалено');

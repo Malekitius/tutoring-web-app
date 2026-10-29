@@ -140,12 +140,12 @@ $('#school-lesson-form').addEventListener('submit', saveLesson);
 $('#school-series-form').addEventListener('submit', saveSeries);
 $('#school-edit-series').addEventListener('click', openSeries);
 $('#school-end-series').addEventListener('click', async () => {
-  const item = state.editing; if (!item || !window.confirm('Завершить еженедельную серию начиная с этого урока?')) return;
+  const item = state.editing; if (!item || !await window.AppDialogs.confirm('Все будущие уроки этой серии исчезнут из расписания.', {title: 'Завершить серию?', confirmText: 'Завершить'})) return;
   try { await api(`/api/school/schedule/rules/${item.weekly_rule_id}`, 'DELETE', {from_date: item.source_date || item.date}); lessonDialog.close(); await loadWeek(); toast('Серия завершена'); }
   catch (error) { formError('#school-lesson-error', error.message); }
 });
 $('#school-delete-lesson').addEventListener('click', async () => {
-  const item = state.editing; if (!item || !window.confirm('Удалить этот урок?')) return;
+  const item = state.editing; if (!item || !await window.AppDialogs.confirm('Урок будет удалён из расписания.', {title: 'Удалить урок?'})) return;
   try { await api(`/api/school/schedule/lessons/${item.id}`, 'DELETE'); lessonDialog.close(); await loadWeek(); toast('Урок удалён'); }
   catch (error) { formError('#school-lesson-error', error.message); }
 });

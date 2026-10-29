@@ -255,7 +255,7 @@ $('#comments-list').addEventListener('click', async event => {
     $('#comment-cancel-edit').hidden = false;
     errorIn('#comment-error', '');
     $('#comment-body').focus();
-  } else if (event.target.closest('.comment-delete') && confirm('Удалить этот комментарий?')) {
+  } else if (event.target.closest('.comment-delete') && await window.AppDialogs.confirm('Комментарий исчезнет из занятия и карточки ученика.', {title: 'Удалить комментарий?'})) {
     try {
       await api(`/api/schedule/comments/${comment.id}`, 'DELETE', {});
       if (editingCommentId === comment.id) resetCommentComposer();
@@ -270,12 +270,12 @@ document.querySelectorAll('.dialog-close').forEach(button => button.addEventList
 document.querySelectorAll('.series-close').forEach(button => button.addEventListener('click', () => $('#series-dialog').close()));
 $('#edit-series').addEventListener('click', openSeries);
 $('#end-series').addEventListener('click', async () => {
-  if (!editing || !confirm('Завершить эту серию с выбранного занятия? Будущие занятия серии исчезнут из расписания.')) return;
+  if (!editing || !await window.AppDialogs.confirm('Будущие занятия серии исчезнут из расписания.', {title: 'Завершить серию?', confirmText: 'Завершить'})) return;
   try { await api(`/api/schedule/rules/${editing.weekly_rule_id}`, 'DELETE', {from_date:editing.source_date}); $('#lesson-dialog').close(); await loadWeek(); toast('Серия завершена'); }
   catch (error) { errorIn('#lesson-error', error.message); }
 });
 $('#delete-lesson').addEventListener('click', async () => {
-  if (!editing || !confirm('Удалить это занятие?')) return;
+  if (!editing || !await window.AppDialogs.confirm('Занятие будет удалено из расписания.', {title: 'Удалить занятие?'})) return;
   try { await api(`/api/schedule/lessons/${editing.id}`, 'DELETE', {}); $('#lesson-dialog').close(); await loadWeek(); toast('Занятие удалено'); }
   catch (error) { errorIn('#lesson-error', error.message); }
 });

@@ -13,13 +13,13 @@
   }
   root.addEventListener('click', async event => {
     const button = event.target.closest('[data-delete]');
-    if (!button || !confirm('Удалить подборку класса? Задачи в библиотеке останутся.')) return;
+    if (!button || !await window.AppDialogs.confirm('Задачи в библиотеке останутся.', {title: 'Удалить подборку класса?'})) return;
     try {
       const response = await fetch(`/api/school/worksheets/${button.dataset.delete}`, {method: 'DELETE', headers: {'X-CSRFToken': cookie()}});
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Не удалось удалить подборку');
       load();
-    } catch (error) { alert(error.message); }
+    } catch (error) { window.AppDialogs.notify(error.message, true); }
   });
   document.querySelector('#generator-section').hidden = false;
   window.addEventListener('school:worksheets-changed', load);

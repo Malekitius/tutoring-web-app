@@ -43,7 +43,7 @@ $('#restore-file').addEventListener('change', async () => {
 });
 form.addEventListener('submit', async event => {
   event.preventDefault();
-  if (!previewReady || !window.confirm('Заменить все текущие данные содержимым архива?')) return;
+  if (!previewReady || !await window.AppDialogs.confirm('Текущие данные будут заменены содержимым архива. Перед восстановлением приложение создаст их резервную копию.', {title: 'Восстановить данные?', confirmText: 'Восстановить', danger: false})) return;
   submit.disabled = true; error('');
   try {
     const result = await upload('/api/data/backup/restore', formData(true));

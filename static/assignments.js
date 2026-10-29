@@ -292,22 +292,22 @@ async function handleDetailClick(event) {
   try {
     if (action === 'edit-exercise') showExerciseDialog(state.library.items.find(item => item.id === state.selected));
     else if (action === 'delete-exercise') {
-      if (!confirm('Удалить задачу из библиотеки? Уже добавленные копии останутся в подборках.')) return;
+      if (!await window.AppDialogs.confirm('Уже добавленные копии останутся в подборках.', {title: 'Удалить задачу из библиотеки?'})) return;
       await api(`/api/assignments/exercises/${state.selected}`, 'DELETE'); await reload(null); toast('Задача удалена');
     } else if (action === 'edit-worksheet') showWorksheetDialog(worksheet);
     else if (action === 'delete-worksheet') {
-      if (!confirm('Удалить подборку вместе с задачами и загруженными работами?')) return;
+      if (!await window.AppDialogs.confirm('Задачи в подборке и загруженные работы будут удалены вместе с ней.', {title: 'Удалить подборку?'})) return;
       await api(`/api/assignments/worksheets/${state.selected}`, 'DELETE'); await reload(null); toast('Подборка удалена');
     } else if (action === 'add-item') showPicker();
     else if (action === 'edit-item') showItemDialog(worksheet.items.find(item => item.id === button.closest('.assign-item').dataset.id));
     else if (action === 'delete-item') {
-      if (!confirm('Удалить задачу из этой подборки?')) return;
+      if (!await window.AppDialogs.confirm('Задача будет удалена из этой подборки.', {title: 'Удалить задачу?'})) return;
       await api(`/api/assignments/items/${button.closest('.assign-item').dataset.id}`, 'DELETE'); await reload(); toast('Задача удалена из подборки');
     } else if (action === 'toggle-assigned') {
       await api(`/api/assignments/worksheets/${worksheet.id}`, 'PATCH', {status: worksheet.status === 'draft' ? 'assigned' : 'draft'}); await reload();
     } else if (action === 'upload') { $('#upload-form').reset(); showError('#upload-error', ''); $('#upload-dialog').showModal(); }
     else if (action === 'delete-upload') {
-      if (!confirm('Удалить загруженный файл?')) return;
+      if (!await window.AppDialogs.confirm('Загруженная работа будет удалена.', {title: 'Удалить файл?'})) return;
       await api(`/api/assignments/submissions/${button.closest('.assign-upload').dataset.id}`, 'DELETE'); await reload(); toast('Файл удалён');
     } else if (action === 'review') {
       await api(`/api/assignments/worksheets/${worksheet.id}`, 'PATCH', {status: button.dataset.status, feedback: $('#review-feedback').value}); await reload(); toast('Результат проверки сохранён');

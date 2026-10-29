@@ -45,3 +45,26 @@
 .mode-option>span:first-child{font-size:13px}.mode-option:hover{color:#fff;background:#315c4d}.mode-option.selected{background:#edf3e9;color:#1b4d3d;box-shadow:0 2px 8px #0b2c2026}
 @media(max-width:950px){.mode-switch{grid-template-columns:1fr;margin:-16px 0 18px}.mode-label{display:none}.mode-option{min-height:32px}}
 @media(max-width:720px){.sidebar{overflow-x:auto}.mode-switch{display:flex;flex:none;margin:0 0 0 auto}.mode-option{min-width:33px}.nav{margin-left:0;flex:none}}
+
+/* Shared motion and readability across tutoring and school screens. */
+.nav-item{transition:background .18s ease,color .18s ease,transform .18s ease}
+.nav-item:not(.active):not(.disabled):hover{background:#ffffff16;color:#fff;transform:translateX(2px)}
+.student-row,.subject-card,.stat,.text-button,.icon-button{transition:background .18s ease,border-color .18s ease,color .18s ease,transform .18s ease,box-shadow .18s ease}
+.student-row:hover{transform:translateX(2px)}
+.subject-card:hover,.stat:hover{border-color:#d7e5d4;box-shadow:0 5px 16px #24452f0c}
+.detail-panel,.list-panel{animation:panel-arrive .26s ease-out both}
+.editor-dialog[open]{animation:dialog-arrive .23s cubic-bezier(.2,.8,.2,1) both}
+.editor-dialog::backdrop{animation:backdrop-arrive .2s ease-out both}
+.student-row small,.section-empty,.field small,.subject-meta,.topic-empty,.notes-order-hint{color:#6b796d}
+.student-row small,.section-empty,.field small,.subject-meta,.topic-empty{font-size:11px}
+.field span,.topic-row,.mini-add,.text-button{font-size:12px}
+.field input,.field select,.field textarea{font-size:13px;min-height:41px}
+.field textarea{min-height:84px}
+.field input[type=file]{min-height:52px;padding:8px;border-style:dashed;background:#fbfdf9;color:#607465;cursor:pointer}
+.field input[type=file]::file-selector-button{border:0;border-radius:7px;background:#e6f0e3;color:#315e42;padding:8px 11px;margin-right:10px;font:inherit;font-weight:800;cursor:pointer}
+.field input[type=file]:hover{border-color:#91b994;background:#f6fbf4}
+.foot-actions .text-button{color:#a35746}
+@keyframes panel-arrive{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes dialog-arrive{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes backdrop-arrive{from{opacity:0}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){.nav-item,.student-row,.subject-card,.stat,.text-button,.icon-button,.button{transition:none}.detail-panel,.list-panel,.editor-dialog[open],.editor-dialog::backdrop{animation:none}}

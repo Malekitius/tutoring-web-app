@@ -138,7 +138,7 @@ $('#opening-form').addEventListener('submit',saveOpening);
 document.querySelectorAll('.payment-close').forEach(button => button.addEventListener('click', () => $('#payment-dialog').close()));
 document.querySelectorAll('.opening-close').forEach(button => button.addEventListener('click', () => $('#opening-dialog').close()));
 $('#delete-payment').addEventListener('click', async () => {
-  if (!editingPayment || !confirm('Удалить это внесение? Баланс ученика будет пересчитан.')) return;
+  if (!editingPayment || !await window.AppDialogs.confirm('Баланс ученика будет пересчитан после удаления внесения.', {title: 'Удалить внесение?'})) return;
   try { await api(`/api/finances/payments/${editingPayment.id}`,'DELETE',{}); $('#payment-dialog').close(); await loadDashboard(); toast('Внесение удалено'); }
   catch (error) { setError('#payment-error',error.message); }
 });

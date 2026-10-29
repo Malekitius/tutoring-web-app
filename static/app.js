@@ -158,7 +158,7 @@ function renderDetail() {
     detailEl.innerHTML = `<div class="detail-empty">
       <div class="empty-illustration" aria-hidden="true">∑</div>
       <h2>Начните с первого ученика</h2>
-      <p>Запишите цель, предметы и темы. Позже к этой карточке привяжем занятия и домашние задания.</p>
+      <p>Запишите цель, предметы и темы. К карточке можно добавить расписание, материалы и задания.</p>
       <button class="button button-primary" type="button" data-action="add-student">＋ Добавить ученика</button>
     </div>`;
     return;
@@ -186,7 +186,7 @@ function renderDetail() {
     </div>
     <div class="section-title"><h3>Предметы и темы</h3><button class="text-button" type="button" data-action="add-subject">＋ Добавить предмет</button></div>
     ${renderSubjects(student)}
-    <div class="section-title"><h3>Занятия и ставка</h3><span>Для будущего расписания и учёта</span></div>
+    <div class="section-title"><h3>Занятия и ставка</h3><span>Стоимость применяется к новым занятиям</span></div>
     <div class="stats-row">
       <div class="stat"><strong>${student.duration_min} мин</strong><small>Длительность занятия</small></div>
       <div class="stat"><strong>${rubles(student.price_rub)}</strong><small>Стоимость занятия</small></div>
@@ -299,12 +299,12 @@ async function saveEditor(event) {
 
 async function deleteEntity(type, id) {
   const phrases = {
-    student: "Удалить ученика вместе со всеми предметами и темами?",
+    student: `Карточка «${state.current?.name || 'ученика'}» и связанные предметы, занятия, материалы, задания и финансовые записи будут удалены.`,
     subject: "Удалить предмет вместе со всеми его темами?",
     topic: "Удалить эту тему?",
     note: "Удалить эту заметку? Она исчезнет и из занятия, если была добавлена там."
   };
-  if (!window.confirm(phrases[type])) return;
+  if (!await window.AppDialogs.confirm(phrases[type], {title: type === 'student' ? 'Удалить ученика?' : 'Удалить запись?'})) return;
   try {
     await api(`/api/${type === "student" ? "students" : type === "subject" ? "subjects" : type === "topic" ? "topics" : "notes"}/${id}`, { method: "DELETE" });
     if (type === "student") state.current = null;
