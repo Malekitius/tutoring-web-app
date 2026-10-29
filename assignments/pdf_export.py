@@ -61,7 +61,9 @@ def format_text(value):
 def format_body(value):
     """Give paragraphs, lettered subparts and standalone formulas room to breathe."""
     paragraphs = []
-    for line in (value or "").splitlines():
+    seen_subpart = False
+    content = re.sub(r";[ \t]+(?=[а-яa-z]\)\s)", ";\n", value or "")
+    for line in content.splitlines():
         line = line.strip()
         if not line:
             paragraphs.append(r"\smallskip")
@@ -70,7 +72,11 @@ def format_body(value):
         if equation:
             paragraphs.append(r"\noindent\hspace*{7mm}\(\displaystyle " + format_math(equation[1]) + equation[2] + r"\)\par")
         else:
-            hanging = r"\hangindent=7mm\hangafter=1 " if re.match(r"^(?:[а-яa-z]|\d{1,2})\)\s", line, re.I) else ""
+            subpart = bool(re.match(r"^(?:[а-яa-z]|\d{1,2})\)\s", line, re.I))
+            if subpart and seen_subpart:
+                paragraphs.append(r"\addvspace{\baselineskip}")
+            seen_subpart = seen_subpart or subpart
+            hanging = r"\hangindent=7mm\hangafter=1 " if subpart else ""
             paragraphs.append(hanging + format_text(line) + r"\par")
     return "\n".join(paragraphs)
 
