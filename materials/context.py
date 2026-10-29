@@ -79,7 +79,7 @@ def selected_context(selections, owner, query):
             if snippet_bytes > MAX_PDF_SNIPPET_BYTES:
                 raise ValueError("Выбранные PDF вместе слишком велики для запроса")
             files.append((f"{material.title[:80]}.pdf", output.getvalue()))
-            refs.append({"title": material.title, "pages": numbers})
+            refs.append({"id": str(material.id), "title": material.title, "pages": numbers})
             continue
         candidates = []
         for page in material.pages.exclude(text=""):
@@ -91,6 +91,6 @@ def selected_context(selections, owner, query):
         chosen = sorted(candidates[:3], key=lambda row: row[1])
         if not chosen:
             raise ValueError(f"В материале «{material.title}» не найдена тема. Укажите нужные страницы вручную (для сканов это обязательно).")
-        refs.append({"title": material.title, "pages": [number for _, number, _ in chosen]})
+        refs.append({"id": str(material.id), "title": material.title, "pages": [number for _, number, _ in chosen]})
         excerpts.extend(f"[{material.title}, стр. {number}]\n{value[:4000]}" for _, number, value in chosen)
     return "\n\n".join(excerpts)[:MAX_TEXT_CHARS], files, refs

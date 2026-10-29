@@ -136,7 +136,7 @@ class SchoolFlowTests(TestCase):
             empty.close()
             manifest["version"] = 1
             manifest["counts"] = {key: value for key, value in manifest["counts"].items()
-                                  if not key.startswith(("school.", "materials."))}
+                                  if not key.startswith(("school.", "materials.")) and key != "assignments.taskfigure"}
             old = io.BytesIO()
             with zipfile.ZipFile(old, "w") as target:
                 target.writestr("records.json", records)

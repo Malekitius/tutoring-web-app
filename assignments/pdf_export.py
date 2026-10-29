@@ -53,7 +53,7 @@ def format_text(value):
     return "".join(formatted)
 
 
-def build_source(worksheet, include_answers=False):
+def build_source(worksheet, include_answers=False, figure_paths=None):
     title = escape_text(worksheet.title)
     owner = getattr(worksheet, "school_class", None) or worksheet.student
     owner_label = "Класс" if getattr(worksheet, "school_class_id", None) else "Ученик"
@@ -64,7 +64,7 @@ def build_source(worksheet, include_answers=False):
     if worksheet.due_date:
         metadata.append(r"\textbf{Срок сдачи:} " + worksheet.due_date.strftime("%d.%m.%Y"))
     blocks = [r"\documentclass[11pt,a4paper]{article}",
-              r"\usepackage{fontspec}", r"\usepackage{amsmath,amssymb,xcolor}",
+              r"\usepackage{fontspec}", r"\usepackage{amsmath,amssymb,xcolor,graphicx}",
               r"\usepackage[margin=20mm]{geometry}", r"\setmainfont{Arial}",
               r"\setsansfont{Arial}", r"\definecolor{forest}{HTML}{285A43}",
               r"\setlength{\parindent}{0pt}", r"\setlength{\parskip}{5pt}",
@@ -78,6 +78,10 @@ def build_source(worksheet, include_answers=False):
     for index, item in enumerate(worksheet.items.all(), start=1):
         blocks += [r"\textbf{Задача " + str(index) + r". " + escape_text(item.title) + r"}\par",
                    format_text(item.prompt) + r"\par", r"\vspace{5mm}"]
+        for figure in item.figures.all():
+            path = (figure_paths or {}).get(str(figure.id))
+            if path:
+                blocks += [r"\begin{center}\includegraphics[width=.88\linewidth,height=72mm,keepaspectratio]{" + path + r"}\end{center}"]
         if include_answers:
             blocks += [r"\textbf{Решение:} " + (format_text(item.answer) if item.answer else "Не добавлено") + r"\par", r"\vspace{4mm}"]
             if item.source_ref:
@@ -94,8 +98,17 @@ def build_pdf(worksheet, include_answers=False):
     compiler = which("xelatex")
     if not compiler:
         raise ValueError("Для экспорта PDF установите XeLaTeX")
-    source = build_source(worksheet, include_answers)
     with tempfile.TemporaryDirectory(prefix="tutor-pdf-") as directory:
+        figures_dir = Path(directory) / "figures"
+        figures_dir.mkdir()
+        figure_paths = {}
+        for item in worksheet.items.all():
+            for figure in item.figures.all():
+                name = f"figures/{figure.id}.png"
+                with figure.file.open("rb") as source_image:
+                    (Path(directory) / name).write_bytes(source_image.read())
+                figure_paths[str(figure.id)] = name
+        source = build_source(worksheet, include_answers, figure_paths)
         tex_path = Path(directory) / "worksheet.tex"
         tex_path.write_text(source, encoding="utf-8")
         try:

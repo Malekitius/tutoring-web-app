@@ -73,6 +73,36 @@ class MaterialTests(TestCase):
         self.assertEqual(self.client.delete(f"/api/materials/{first.json()['id']}").status_code, 200)
         self.assertFalse(Path(path).exists())
 
+    def test_crop_figure_from_pdf_page(self):
+        material = self.upload("student_id", self.student.id).json()
+        cropped = self.client.post(f"/api/materials/{material['id']}/crop",
+                                   json.dumps({"page": 1, "x": .1, "y": .1, "width": .5, "height": .3}),
+                                   content_type="application/json")
+        self.assertEqual(cropped.status_code, 200, cropped.content)
+        import base64
+        self.assertTrue(base64.b64decode(cropped.json()["png"]).startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertEqual(cropped.json()["source_page"], 1)
+        invalid = self.client.post(f"/api/materials/{material['id']}/crop",
+                                   json.dumps({"page": 1, "x": .9, "y": .9, "width": .3, "height": .3}),
+                                   content_type="application/json")
+        self.assertEqual(invalid.status_code, 400)
+
+    def test_school_task_keeps_cropped_figure(self):
+        material = self.upload("class_id", self.school_class.id).json()
+        figure = self.client.post(f"/api/materials/{material['id']}/crop",
+                                  json.dumps({"page": 1, "x": .1, "y": .1, "width": .5, "height": .3}),
+                                  content_type="application/json").json()
+        exercise = {"title": "График", "prompt": "Исследуйте график", "answer": "Ответ",
+                    "subject": "Алгебра", "topic": "Функции", "subtopic": "", "difficulty": 2,
+                    "grades": [8], "figures": [figure]}
+        saved = self.client.post("/api/assistant/accept", json.dumps({"class_id": str(self.school_class.id),
+            "grade": 8, "destination": "lesson", "title": "Графики", "exercises": [exercise]}),
+            content_type="application/json")
+        self.assertEqual(saved.status_code, 201, saved.content)
+        worksheet = SchoolWorksheet.objects.get(id=saved.json()["worksheet"]["id"])
+        self.assertEqual(worksheet.items.first().figures.count(), 1)
+        self.assertEqual(self.client.get(f"/api/school/worksheets/{worksheet.id}/pdf").status_code, 200)
+
     def test_invalid_and_foreign_materials_are_rejected(self):
         fake = self.client.post("/api/materials/", {
             "student_id": str(self.student.id), "title": "Не PDF", "kind": "other",
@@ -309,7 +339,7 @@ class MaterialTests(TestCase):
         manifest["version"] = 2
         manifest["counts"] = {key: value for key, value in manifest["counts"].items()
                               if not key.startswith("materials.") and key not in
-                              {"school.schoolworksheet", "school.schoolworksheetitem"}}
+                              {"school.schoolworksheet", "school.schoolworksheetitem", "assignments.taskfigure"}}
         old = io.BytesIO()
         with zipfile.ZipFile(old, "w") as target:
             target.writestr("records.json", records)

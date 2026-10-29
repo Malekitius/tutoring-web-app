@@ -1,6 +1,8 @@
 import uuid
 
-from django.db import models
+from django.db import models, transaction
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 
 from schedule.models import Lesson
 from students.models import Student
@@ -67,6 +69,45 @@ class WorksheetItem(models.Model):
 
     class Meta:
         ordering = ["position", "id"]
+
+
+def figure_path(instance, filename):
+    return f"task-figures/{instance.id}.png"
+
+
+class TaskFigure(models.Model):
+    """An owned snapshot: worksheet figures survive edits to library exercises."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    exercise = models.ForeignKey(Exercise, on_delete=models.CASCADE, null=True, blank=True, related_name="figures")
+    worksheet_item = models.ForeignKey(WorksheetItem, on_delete=models.CASCADE, null=True, blank=True, related_name="figures")
+    school_item = models.ForeignKey("school.SchoolWorksheetItem", on_delete=models.CASCADE, null=True, blank=True, related_name="figures")
+    file = models.FileField(upload_to=figure_path)
+    position = models.PositiveSmallIntegerField(default=0)
+    source_title = models.CharField(max_length=160, blank=True)
+    source_page = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["position", "id"]
+        constraints = [models.CheckConstraint(
+            condition=(models.Q(exercise__isnull=False, worksheet_item__isnull=True, school_item__isnull=True) |
+                       models.Q(exercise__isnull=True, worksheet_item__isnull=False, school_item__isnull=True) |
+                       models.Q(exercise__isnull=True, worksheet_item__isnull=True, school_item__isnull=False)),
+            name="task_figure_one_owner",
+        )]
+
+
+@receiver(post_delete, sender=TaskFigure)
+def cleanup_task_figure_file(sender, instance, **kwargs):
+    if not instance.file:
+        return
+    storage, name = instance.file.storage, instance.file.name
+    def remove_unreferenced():
+        if not TaskFigure.objects.filter(file=name).exists():
+            storage.delete(name)
+    transaction.on_commit(remove_unreferenced)
+
+
 
 
 def submission_path(instance, filename):

@@ -1,6 +1,8 @@
 """Local PDF attachments for individual students and school classes."""
 
 import io
+import base64
+import math
 import re
 import uuid
 from pathlib import Path
@@ -11,12 +13,13 @@ from django.http import FileResponse, JsonResponse
 from django.http import HttpResponse
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 import pypdfium2 as pdfium
+from PIL import Image
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
 from school.models import SchoolClass
 from students.models import Student
-from students.views import fail, text
+from students.views import body, fail, text
 
 from .models import Material, MaterialPage
 
@@ -169,3 +172,54 @@ def page_image(request, material_id, page_number):
         return response
     except (FileNotFoundError, pdfium.PdfiumError, RuntimeError, ValueError):
         return fail("Не удалось открыть страницу PDF", 404)
+
+
+def crop_figure(request, material_id):
+    """Render a selected rectangle of a page; coordinates are fractions of the page."""
+    if request.method != "POST":
+        return fail("Метод не поддерживается", 405)
+    item = Material.objects.filter(id=material_id).first()
+    if item is None:
+        return fail("Материал не найден", 404)
+    try:
+        data = body(request)
+        page_number = int(data.get("page"))
+        bounds = [float(data.get(key)) for key in ("x", "y", "width", "height")]
+        x, y, width, height = bounds
+        if not 1 <= page_number <= item.page_count or not all(map(math.isfinite, bounds)):
+            raise ValueError("Некорректная страница или область рисунка")
+        if not (0 <= x < 1 and 0 <= y < 1 and .02 <= width <= 1 - x and .02 <= height <= 1 - y):
+            raise ValueError("Выделите область рисунка на странице")
+        document = pdfium.PdfDocument(item.file.path)
+        try:
+            page = document[page_number - 1]
+            try:
+                page_width, page_height = page.get_size()
+                scale = min(3, 4000 / max(1, page_width, page_height))
+                bitmap = page.render(scale=scale)
+                try:
+                    image = bitmap.to_pil()
+                    crop = image.crop((round(x * image.width), round(y * image.height),
+                                       round((x + width) * image.width), round((y + height) * image.height)))
+                    if crop.width < 60 or crop.height < 60:
+                        raise ValueError("Выделенная область слишком мала")
+                    crop.thumbnail((4000, 4000), Image.Resampling.LANCZOS)
+                    crop = crop.convert("RGB")
+                    for _ in range(6):
+                        output = io.BytesIO()
+                        crop.save(output, format="PNG", optimize=True)
+                        if output.tell() <= 2 * 1024 * 1024:
+                            break
+                        crop.thumbnail((round(crop.width * .8), round(crop.height * .8)), Image.Resampling.LANCZOS)
+                finally:
+                    bitmap.close()
+            finally:
+                page.close()
+        finally:
+            document.close()
+        if output.tell() > 2 * 1024 * 1024:
+            raise ValueError("Рисунок слишком большой. Выделите меньшую область")
+        return JsonResponse({"png": base64.b64encode(output.getvalue()).decode("ascii"),
+                             "source_title": item.title, "source_page": page_number})
+    except (TypeError, ValueError, OSError, pdfium.PdfiumError):
+        return fail("Не удалось вырезать рисунок. Проверьте страницу и выделенную область")

@@ -44,8 +44,8 @@ def api_errors(view):
     return wrapped
 
 
-def body(request):
-    if not 0 < len(request.body) <= MAX_BODY:
+def body(request, max_bytes=MAX_BODY):
+    if not 0 < len(request.body) <= max_bytes:
         raise ValueError("Размер запроса недопустим")
     try:
         result = json.loads(request.body)

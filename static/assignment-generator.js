@@ -1,7 +1,7 @@
 (() => {
 const $ = selector => document.querySelector(selector);
 const schoolMode = document.body.dataset.mode === 'school';
-const state = {drafts: [], targetId: null, meta: null, pendingGeneration: null, generating: false};
+const state = {drafts: [], targetId: null, meta: null, pendingGeneration: null, generating: false, figureIndex: null, figureBounds: null};
 const difficultyNames = {1: 'Базовая', 2: 'Средняя', 3: 'Повышенная', 4: 'Олимпиадная'};
 
 function esc(value = '') { return String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[char])); }
@@ -95,6 +95,7 @@ function renderDrafts() {
       <div class="assistant-draft-preview" data-preview="prompt">${esc(item.prompt)}</div>
       <div class="assistant-draft-editor" hidden><label class="field"><span>LaTeX-код условия</span><textarea name="prompt" maxlength="10000" required>${esc(item.prompt)}</textarea></label><div class="assistant-draft-actions"><button class="button button-primary" type="button" data-save-edit="prompt">Сохранить</button><button class="button button-secondary" type="button" data-cancel-edit="prompt">Отмена</button></div></div>
     </div>
+    ${item.source_refs?.some(ref => ref.id) ? `<div class="draft-figures"><div class="assistant-draft-part-head"><span>Рисунки и графики</span><button class="text-button" type="button" data-add-figure="${index}" ${item.figures?.length >= 5 ? 'disabled' : ''}>＋ Добавить из PDF</button></div>${(item.figures || []).map((figure, figureIndex) => `<figure><img src="data:image/png;base64,${figure.png}" alt="Рисунок ${figureIndex + 1} из ${esc(figure.source_title)}, страница ${figure.source_page}"><figcaption>${esc(figure.source_title)} · стр. ${figure.source_page} <button class="text-button danger-text" type="button" data-remove-figure="${figureIndex}">Убрать</button></figcaption></figure>`).join('')}</div>` : ''}
     <div class="assistant-draft-rendered" data-part="answer">
       <div class="assistant-draft-part-head"><span>Решение и ответ</span><button class="text-button" type="button" data-edit="answer">Изменить решение</button></div>
       <div class="assistant-draft-preview" data-preview="answer">${esc(item.answer)}</div>
@@ -127,6 +128,13 @@ function closeEditor(part) {
 }
 
 $('#draft-list').addEventListener('click', event => {
+  const addFigure = event.target.closest('[data-add-figure]');
+  if (addFigure) { openFigure(Number(addFigure.dataset.addFigure)); return; }
+  const removeFigure = event.target.closest('[data-remove-figure]');
+  if (removeFigure) {
+    state.drafts[Number(removeFigure.closest('.assistant-draft').dataset.index)].figures.splice(Number(removeFigure.dataset.removeFigure), 1);
+    renderDrafts(); return;
+  }
   const button = event.target.closest('[data-remove]');
   if (button) {
     state.drafts.splice(Number(button.dataset.remove), 1);
@@ -236,7 +244,7 @@ async function runGeneration() {
       if (!Array.isArray(result.exercises) || result.exercises.length !== 1 || result[schoolMode ? 'class_id' : 'student_id'] !== state.targetId) {
         throw new Error('Сервер вернул неверное количество задач.');
       }
-      state.drafts.push({...result.exercises[0], source_refs: result.source_refs || []});
+      state.drafts.push({...result.exercises[0], source_refs: result.source_refs || [], figures: []});
       pending.nextIndex++;
       $('#accept-form').hidden = false;
       renderDrafts();
@@ -307,6 +315,10 @@ $('#accept-form').addEventListener('submit', async event => {
     showError('#accept-error', 'Сначала сохраните изменения условия или решения.');
     return;
   }
+  if (state.drafts.reduce((total, item) => total + (item.figures || []).reduce((sum, figure) => sum + figure.png.length, 0), 0) > 18_000_000) {
+    showError('#accept-error', 'Рисунки в подборке занимают слишком много места. Уберите часть фрагментов или сохраните задачи несколькими подборками.');
+    return;
+  }
   showError('#accept-error', '');
   busy(form, true);
   try {
@@ -329,6 +341,79 @@ $('#accept-form').addEventListener('submit', async event => {
     if (schoolMode) window.dispatchEvent(new Event('school:worksheets-changed'));
   } catch (error) { showError('#accept-error', error.message); }
   finally { busy(form, false); syncEditState(); }
+});
+
+function figureRefs() { return state.drafts[state.figureIndex]?.source_refs?.filter(ref => ref.id) || []; }
+function updateFigurePages() {
+  const ref = figureRefs().find(item => item.id === $('#figure-material').value);
+  $('#figure-page').innerHTML = (ref?.pages || []).map(page => `<option value="${page}">${page}</option>`).join('');
+  updateFigureImage();
+}
+function updateFigureImage() {
+  state.figureBounds = null;
+  $('#figure-selection').style.display = 'none';
+  $('#figure-save').disabled = true;
+  showError('#figure-error', '');
+  const id = $('#figure-material').value, page = $('#figure-page').value;
+  if (id && page) $('#figure-page-image').src = `/api/materials/${encodeURIComponent(id)}/page/${encodeURIComponent(page)}.png`;
+}
+function openFigure(index) {
+  if (state.generating || !state.drafts[index]?.source_refs?.some(ref => ref.id)) return;
+  state.figureIndex = index;
+  $('#figure-material').innerHTML = figureRefs().map(ref => `<option value="${esc(ref.id)}">${esc(ref.title)}</option>`).join('');
+  updateFigurePages();
+  $('#figure-dialog').showModal();
+}
+$('#figure-material').addEventListener('change', updateFigurePages);
+$('#figure-page').addEventListener('change', updateFigureImage);
+$('#figure-zoom').addEventListener('change', () => {
+  state.figureBounds = null;
+  $('#figure-selection').style.display = 'none';
+  $('#figure-save').disabled = true;
+  $('#figure-page-image').style.maxHeight = `${60 * Number($('#figure-zoom').value)}vh`;
+});
+for (const id of ['figure-close', 'figure-cancel']) $(`#${id}`).addEventListener('click', () => $('#figure-dialog').close());
+$('#figure-page-image').addEventListener('error', () => showError('#figure-error', 'Не удалось открыть страницу PDF.'));
+const figureImage = $('#figure-page-image');
+let figureStart = null;
+function figurePoint(event) {
+  const box = figureImage.getBoundingClientRect();
+  return {x: Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)),
+          y: Math.max(0, Math.min(1, (event.clientY - box.top) / box.height))};
+}
+figureImage.addEventListener('pointerdown', event => {
+  if (!figureImage.complete || !figureImage.naturalWidth) return;
+  event.preventDefault();
+  figureStart = figurePoint(event);
+  figureImage.setPointerCapture(event.pointerId);
+  state.figureBounds = null;
+  $('#figure-save').disabled = true;
+  $('#figure-selection').style.display = 'block';
+});
+figureImage.addEventListener('pointermove', event => {
+  if (!figureStart) return;
+  const point = figurePoint(event);
+  const x = Math.min(figureStart.x, point.x), y = Math.min(figureStart.y, point.y);
+  const width = Math.abs(figureStart.x - point.x), height = Math.abs(figureStart.y - point.y);
+  const selection = $('#figure-selection');
+  Object.assign(selection.style, {left: `${x * 100}%`, top: `${y * 100}%`, width: `${width * 100}%`, height: `${height * 100}%`});
+  state.figureBounds = {x, y, width, height};
+});
+figureImage.addEventListener('pointerup', () => {
+  figureStart = null;
+  $('#figure-save').disabled = !state.figureBounds || state.figureBounds.width < .02 || state.figureBounds.height < .02;
+});
+$('#figure-save').addEventListener('click', async () => {
+  if (!state.figureBounds || state.figureIndex === null) return;
+  const button = $('#figure-save'); button.disabled = true; button.textContent = 'Вырезаю рисунок…';
+  try {
+    const result = await api(`/api/materials/${encodeURIComponent($('#figure-material').value)}/crop`, 'POST',
+      {page: Number($('#figure-page').value), ...state.figureBounds});
+    state.drafts[state.figureIndex].figures.push(result);
+    $('#figure-dialog').close();
+    renderDrafts();
+  } catch (error) { showError('#figure-error', error.message); }
+  finally { button.textContent = 'Добавить рисунок'; button.disabled = false; }
 });
 
 async function init() {

@@ -18,4 +18,5 @@ urlpatterns = [
     path("worksheets/<uuid:worksheet_id>/submissions", views.submissions_collection),
     path("submissions/<uuid:submission_id>/file", views.submission_file),
     path("submissions/<uuid:submission_id>", views.submission_detail),
+    path("figures/<uuid:figure_id>/file", views.figure_file),
 ]

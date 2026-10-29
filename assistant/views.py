@@ -388,7 +388,7 @@ def generate_exercises(request):
                                              {"название_класса": school_class.name, "предмет": school_class.subject,
                                               "уровень": school_class.level} if school_class else {}),
                          "материалы_с_указанием_страниц": source_text,
-                         "выбранные_страницы_pdf": source_refs}, ensure_ascii=False)
+                         "выбранные_страницы_pdf": [{"title": ref["title"], "pages": ref["pages"]} for ref in source_refs]}, ensure_ascii=False)
     try:
         provider = get_provider()
     except ProviderError as exc:
@@ -461,7 +461,7 @@ def accept_exercises(request):
     """Only an explicit teacher request saves drafts; this endpoint cannot touch money."""
     if request.method != "POST":
         return fail("Метод не поддерживается", 405)
-    data = body(request)
+    data = body(request, max_bytes=20_000_000)
     student, school_class, _ = teaching_target(data)
     raw = data.get("exercises")
     if not isinstance(raw, list) or not 1 <= len(raw) <= 20:
@@ -469,6 +469,8 @@ def accept_exercises(request):
     if any(not isinstance(row, dict) for row in raw):
         raise ValueError("Неверная структура задачи")
     exercises = [exercise_fields(row) for row in raw]
+    from assignments.figures import save_figures, validate_figures
+    figure_rows = [validate_figures(row.get("figures")) for row in raw]
     sources = [source_reference(row) for row in raw]
     destination = data.get("destination", "library")
     if destination not in {"library", "lesson", "homework"}:
@@ -482,13 +484,15 @@ def accept_exercises(request):
     for position, fields in enumerate(exercises, start=1):
         grades = fields.pop("grades")
         exercise = Exercise.objects.create(**fields)
+        save_figures(exercise, figure_rows[position - 1])
         ExerciseGrade.objects.bulk_create(ExerciseGrade(exercise=exercise, grade=grade) for grade in grades)
         created.append(str(exercise.id))
         if worksheet:
             item_model = WorksheetItem if student else SchoolWorksheetItem
-            item_model.objects.create(worksheet=worksheet, source=exercise, position=position,
-                                      title=exercise.title, prompt=exercise.prompt, answer=exercise.answer,
-                                      source_ref=sources[position - 1])
+            worksheet_item = item_model.objects.create(worksheet=worksheet, source=exercise, position=position,
+                                                       title=exercise.title, prompt=exercise.prompt, answer=exercise.answer,
+                                                       source_ref=sources[position - 1])
+            save_figures(worksheet_item, figure_rows[position - 1])
     return JsonResponse({"exercise_ids": created,
                          "worksheet": (serialize_worksheet(worksheet) if student else serialize_school_worksheet(worksheet))
                          if worksheet else None}, status=201)

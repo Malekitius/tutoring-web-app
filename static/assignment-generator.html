@@ -38,3 +38,8 @@
           <div id="accept-success" class="assistant-success" hidden></div>
         </section>
 </div>
+<dialog id="figure-dialog" class="figure-dialog" aria-labelledby="figure-dialog-title">
+  <div class="figure-dialog-head"><div><span class="eyebrow">РИСУНОК ИЗ МАТЕРИАЛА</span><h2 id="figure-dialog-title">Выделите график на странице</h2></div><button id="figure-close" class="icon-button" type="button" aria-label="Закрыть">×</button></div>
+  <div class="figure-dialog-body"><div class="figure-dialog-controls"><label class="field"><span>Материал</span><select id="figure-material"></select></label><label class="field"><span>Страница PDF</span><select id="figure-page"></select></label><label class="field"><span>Масштаб</span><select id="figure-zoom"><option value="1">Вся страница</option><option value="1.5">150%</option><option value="2">200%</option><option value="3">300%</option></select></label></div><p>Обведите график или рисунок мышью. Можно добавить до пяти фрагментов к одной задаче.</p><div class="figure-stage-scroll"><div class="figure-stage"><img id="figure-page-image" alt="Страница учебника для выделения рисунка"><div id="figure-selection"></div></div></div><p id="figure-error" class="form-error" role="alert" hidden></p></div>
+  <div class="figure-dialog-actions"><button id="figure-cancel" class="button button-secondary" type="button">Отмена</button><button id="figure-save" class="button button-primary" type="button" disabled>Добавить рисунок</button></div>
+</dialog>

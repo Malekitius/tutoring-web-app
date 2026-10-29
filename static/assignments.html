@@ -7,8 +7,8 @@
     <title>Кабинет репетитора — задания</title>
     <link rel="stylesheet" href="/static/app.css?v=7">
     <link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
-    <link rel="stylesheet" href="/static/assignments.css?v=6">
-    <link rel="stylesheet" href="/static/assistant.css?v=7">
+    <link rel="stylesheet" href="/static/assignments.css?v=7">
+    <link rel="stylesheet" href="/static/assistant.css?v=9">
     <link rel="stylesheet" href="/static/materials.css?v=3">
     <link rel="stylesheet" href="/static/materials-viewer.css?v=2">
     <link rel="stylesheet" href="/static/assistant-widget.css?v=4">
@@ -16,9 +16,9 @@
     <script src="/static/dialogs.js?v=2" defer></script>
     <script src="/static/vendor/katex/katex.min.js" defer></script>
     <script src="/static/vendor/katex/auto-render.min.js" defer></script>
-    <script src="/static/assignments.js?v=9" defer></script>
+    <script src="/static/assignments.js?v=10" defer></script>
     <script src="/static/materials-panel.js?v=4" defer></script>
-    <script src="/static/assignment-generator.js?v=9" defer></script>
+    <script src="/static/assignment-generator.js?v=11" defer></script>
     <script src="/static/assistant-widget.js?v=6" defer></script>
   </head>
   <body>
@@ -48,7 +48,7 @@
           <button class="assign-tab" type="button" data-tab="library" role="tab" aria-selected="false">Библиотека <span id="library-count">0</span></button>
           <button class="assign-tab" type="button" data-tab="generator" role="tab" aria-selected="false">Создать задачи</button>
         </div>
-        <div id="library-actions" class="library-actions" hidden><span>Переносимая библиотека задач · формат v2</span><a class="button button-soft" href="/api/assignments/library/export">↓ Выгрузить JSON</a><button id="import-open" class="button button-secondary" type="button">↑ Загрузить JSON</button></div>
+        <div id="library-actions" class="library-actions" hidden><span>Переносимая библиотека задач с рисунками · формат v3</span><a class="button button-soft" href="/api/assignments/library/export">↓ Выгрузить ZIP</a><button id="import-open" class="button button-secondary" type="button">↑ Загрузить библиотеку</button></div>
         <div id="assign-layout" class="assign-layout">
           <section class="assign-list-panel" aria-label="Список заданий">
             <div id="worksheet-filters" class="assign-filter"><label><span>Ученик</span><select id="filter-student"><option value="">Все ученики</option></select></label><label><span>Поиск</span><input id="filter-query" type="search" placeholder="Название или тема"></label></div>
@@ -138,7 +138,7 @@
       </form>
     </dialog>
     <datalist id="subject-suggestions"><option value="Математика"><option value="Алгебра"><option value="Геометрия"><option value="Физика"><option value="Химия"></datalist>
-    <dialog id="import-dialog" class="editor-dialog assign-dialog"><form id="import-form"><div class="dialog-header"><div><div class="eyebrow">БИБЛИОТЕКА</div><h2>Загрузить задачи</h2></div><button class="icon-button close-dialog" type="button" aria-label="Закрыть">×</button></div><div class="dialog-fields"><p class="assign-help">Поддерживаются файлы v1 и v2. Совпадающие ID обновятся, остальные задачи сохранятся.</p><label class="field"><span>Файл JSON · до 20 МБ</span><input name="file" type="file" accept=".json,application/json" required></label><div id="import-preview" class="import-preview" hidden></div></div><div id="import-error" class="form-error" role="alert" hidden></div><div class="dialog-actions"><button class="button button-secondary close-dialog" type="button">Отмена</button><button id="import-submit" class="button button-primary" type="submit" disabled>Импортировать</button></div></form></dialog>
+    <dialog id="import-dialog" class="editor-dialog assign-dialog"><form id="import-form"><div class="dialog-header"><div><div class="eyebrow">БИБЛИОТЕКА</div><h2>Загрузить задачи</h2></div><button class="icon-button close-dialog" type="button" aria-label="Закрыть">×</button></div><div class="dialog-fields"><p class="assign-help">Поддерживаются старые JSON v1/v2 и ZIP v3 с рисунками. Совпадающие ID обновятся, остальные задачи сохранятся.</p><label class="field"><span>Файл JSON или ZIP · до 100 МБ</span><input name="file" type="file" accept=".json,.zip,application/json,application/zip" required></label><div id="import-preview" class="import-preview" hidden></div></div><div id="import-error" class="form-error" role="alert" hidden></div><div class="dialog-actions"><button class="button button-secondary close-dialog" type="button">Отмена</button><button id="import-submit" class="button button-primary" type="submit" disabled>Импортировать</button></div></form></dialog>
 
     <dialog id="upload-dialog" class="editor-dialog assign-dialog">
       <form id="upload-form" enctype="multipart/form-data">

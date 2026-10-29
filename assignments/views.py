@@ -1,10 +1,14 @@
 """One local workspace for lesson tasks, homework and reusable exercises."""
 
 import json
+import hashlib
+import tempfile
 import uuid
+import zipfile
 from datetime import date
 
 from django.core.exceptions import ValidationError
+from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import Q
 from django.db.models.signals import pre_delete
@@ -17,13 +21,14 @@ from schedule.models import Lesson
 from students.models import Student
 from students.views import api_errors, body, fail, number, text
 
-from .models import Exercise, ExerciseGrade, Submission, Worksheet, WorksheetItem
+from .models import Exercise, ExerciseGrade, Submission, Worksheet, WorksheetItem, TaskFigure
+from .figures import copy_figures, serialize_figures
 from .pdf_export import build_pdf
 from .pdf_export import format_text
 
 
 LIBRARY_FORMAT = "tutoring-web-app.exercise-library"
-LIBRARY_VERSION = 2
+LIBRARY_VERSION = 3
 LEGACY_DIFFICULTY = {1: 1, 2: 2, 3: 2, 4: 3, 5: 3}
 LIBRARY_KEYS = {"id", "title", "prompt", "answer", "subject", "grades", "topic", "subtopic", "difficulty"}
 
@@ -106,19 +111,34 @@ def serialize_exercise(item):
     return {"id": str(item.id), "title": item.title, "prompt": item.prompt,
             "answer": item.answer, "subject": item.subject, "grades": grades,
             "topic": item.topic, "subtopic": item.subtopic,
-            "difficulty": item.difficulty, "updated_at": item.updated_at.isoformat()}
+            "difficulty": item.difficulty, "updated_at": item.updated_at.isoformat(),
+            "figures": serialize_figures(item)}
 
 
 def serialize_item(item):
     return {"id": str(item.id), "source_id": str(item.source_id) if item.source_id else None,
             "position": item.position, "title": item.title, "prompt": item.prompt,
-            "answer": item.answer, "source_ref": item.source_ref}
+            "answer": item.answer, "source_ref": item.source_ref, "figures": serialize_figures(item)}
 
 
 def serialize_submission(item):
     return {"id": str(item.id), "original_name": item.original_name,
             "note": item.note, "created_at": item.created_at.isoformat(),
             "url": f"/api/assignments/submissions/{item.id}/file"}
+
+
+def figure_file(request, figure_id):
+    if request.method != "GET":
+        return fail("Метод не поддерживается", 405)
+    item = TaskFigure.objects.filter(id=figure_id).first()
+    if item is None:
+        return fail("Рисунок не найден", 404)
+    try:
+        response = FileResponse(item.file.open("rb"), content_type="image/png")
+        response["Cache-Control"] = "private, max-age=300"
+        return response
+    except FileNotFoundError:
+        return fail("Рисунок отсутствует на диске", 404)
 
 
 def serialize_worksheet(item, detailed=False):
@@ -193,7 +213,7 @@ def exercises_collection(request):
         items = items.order_by("subject", "topic", "subtopic", "title", "id")
         start = (page - 1) * page_size
         return JsonResponse({
-            "items": [serialize_exercise(item) for item in items.prefetch_related("grade_levels")[start:start + page_size]],
+            "items": [serialize_exercise(item) for item in items.prefetch_related("grade_levels", "figures")[start:start + page_size]],
             "total": total, "page": page, "page_size": page_size,
             "facets": {"subjects": list(Exercise.objects.order_by("subject").values_list("subject", flat=True).distinct()), "topics": topics,
                        "subtopics": subtopics},
@@ -212,30 +232,89 @@ def exercises_collection(request):
 def library_export(request):
     if request.method != "GET":
         return fail("Метод не поддерживается", 405)
-    exercises = Exercise.objects.prefetch_related("grade_levels").order_by("id")
+    exercises = Exercise.objects.prefetch_related("grade_levels", "figures").order_by("id")
     rows = []
-    for item in exercises:
-        serialized = serialize_exercise(item)
-        rows.append({key: serialized[key] for key in (
-            "id", "title", "prompt", "answer", "subject", "grades", "topic", "subtopic", "difficulty"
-        )})
-    payload = {"format": LIBRARY_FORMAT, "version": LIBRARY_VERSION, "exercises": rows}
-    result = HttpResponse(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", content_type="application/json; charset=utf-8")
-    result["Content-Disposition"] = 'attachment; filename="exercise-library-v2.json"'
-    return result
+    figures = []
+    output = tempfile.SpooledTemporaryFile(max_size=16 * 1024 * 1024)
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for item in exercises:
+            serialized = serialize_exercise(item)
+            rows.append({key: serialized[key] for key in LIBRARY_KEYS})
+            for figure in item.figures.all():
+                with figure.file.open("rb") as stream:
+                    content = stream.read()
+                path = f"figures/{figure.id}.png"
+                archive.writestr(path, content)
+                figures.append({"id": str(figure.id), "exercise_id": str(item.id), "path": path,
+                                "position": figure.position, "source_title": figure.source_title,
+                                "source_page": figure.source_page, "sha256": hashlib.sha256(content).hexdigest(),
+                                "size": len(content)})
+        payload = {"format": LIBRARY_FORMAT, "version": LIBRARY_VERSION, "exercises": rows, "figures": figures}
+        archive.writestr("manifest.json", json.dumps(payload, ensure_ascii=False, indent=2))
+    output.seek(0)
+    return FileResponse(output, as_attachment=True, filename="exercise-library-v3.zip", content_type="application/zip")
 
 
 def parse_library_upload(file):
-    if not file or file.size > 20 * 1024 * 1024:
-        raise ValueError("Выберите файл JSON размером до 20 МБ")
-    try:
-        document = json.loads(file.read().decode("utf-8-sig"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        raise ValueError("Файл должен содержать корректный JSON в UTF-8") from None
-    if not isinstance(document, dict) or set(document) != {"format", "version", "exercises"}:
+    if not file or file.size > 100 * 1024 * 1024:
+        raise ValueError("Выберите библиотеку JSON или ZIP размером до 100 МБ")
+    figure_rows = {}
+    if file.name.lower().endswith(".zip"):
+        try:
+            with zipfile.ZipFile(file) as archive:
+                infos = archive.infolist()
+                if len(infos) > 5002 or sum(info.file_size for info in infos) > 150 * 1024 * 1024:
+                    raise ValueError("Архив библиотеки слишком большой")
+                names = [info.filename for info in infos]
+                if len(names) != len(set(names)) or "manifest.json" not in names or archive.getinfo("manifest.json").file_size > 20 * 1024 * 1024:
+                    raise ValueError("Некорректный архив библиотеки")
+                document = json.loads(archive.read("manifest.json").decode("utf-8"))
+                if not isinstance(document, dict) or document.get("version") != 3 or set(document) != {"format", "version", "exercises", "figures"}:
+                    raise ValueError("Неподдерживаемый формат архива библиотеки")
+                entries = document["figures"]
+                if not isinstance(entries, list) or len(entries) > 5000:
+                    raise ValueError("Слишком много рисунков в библиотеке")
+                paths = set()
+                for row in entries:
+                    if not isinstance(row, dict) or set(row) != {"id", "exercise_id", "path", "position", "source_title", "source_page", "sha256", "size"}:
+                        raise ValueError("Некорректное описание рисунка")
+                    try:
+                        figure_id = str(uuid.UUID(row["id"]))
+                        exercise_id = str(uuid.UUID(row["exercise_id"]))
+                    except (TypeError, ValueError, AttributeError):
+                        raise ValueError("Некорректный ID рисунка") from None
+                    path = f"figures/{figure_id}.png"
+                    if row["path"] != path or path in paths or path not in names or type(row["position"]) is not int or not 0 <= row["position"] < 5:
+                        raise ValueError("Некорректный путь или порядок рисунка")
+                    paths.add(path)
+                    info = archive.getinfo(path)
+                    if info.file_size > 2 * 1024 * 1024 or info.file_size != row["size"]:
+                        raise ValueError("Некорректный размер рисунка")
+                    content = archive.read(path)
+                    if hashlib.sha256(content).hexdigest() != row["sha256"]:
+                        raise ValueError("Повреждённый рисунок в библиотеке")
+                    from .figures import figure_data
+                    import base64
+                    figure_data({"png": base64.b64encode(content).decode("ascii"),
+                                 "source_title": row["source_title"], "source_page": row["source_page"]})
+                    figure_rows.setdefault(exercise_id, []).append((figure_id, content, row))
+                if set(names) != {"manifest.json", *paths}:
+                    raise ValueError("В архиве есть посторонние файлы")
+        except (zipfile.BadZipFile, KeyError, UnicodeDecodeError, json.JSONDecodeError):
+            raise ValueError("Не удалось прочитать архив библиотеки") from None
+    else:
+        if file.size > 20 * 1024 * 1024:
+            raise ValueError("JSON библиотеки должен быть не больше 20 МБ")
+        try:
+            document = json.loads(file.read().decode("utf-8-sig"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise ValueError("Файл должен содержать корректный JSON в UTF-8") from None
+    if not isinstance(document, dict) or set(document) != ({"format", "version", "exercises", "figures"} if document.get("version") == 3 else {"format", "version", "exercises"}):
         raise ValueError("Неверная структура библиотеки")
-    if document["format"] != LIBRARY_FORMAT or type(document["version"]) is not int or document["version"] not in (1, 2):
+    if document["format"] != LIBRARY_FORMAT or type(document["version"]) is not int or document["version"] not in (1, 2, 3):
         raise ValueError("Неподдерживаемая версия библиотеки")
+    if document["version"] == 3 and not file.name.lower().endswith(".zip"):
+        raise ValueError("Библиотека v3 должна быть архивом ZIP")
     rows = document["exercises"]
     if not isinstance(rows, list) or len(rows) > 10_000:
         raise ValueError("Библиотека должна содержать не более 10 000 задач")
@@ -263,7 +342,14 @@ def parse_library_upload(file):
             row = {**row, "difficulty": LEGACY_DIFFICULTY[row["difficulty"]]}
         fields = exercise_fields(row)
         normalized.append((item_id, fields))
-    return normalized
+    if set(figure_rows) - ids or any(len(rows) > 5 for rows in figure_rows.values()):
+        raise ValueError("Рисунок не относится к задаче или их слишком много")
+    for figures in figure_rows.values():
+        positions = [row[2]["position"] for row in figures]
+        if len(positions) != len(set(positions)):
+            raise ValueError("Повторяющийся порядок рисунков задачи")
+        figures.sort(key=lambda row: row[2]["position"])
+    return normalized, figure_rows, document["version"] == 3
 
 
 @api_errors
@@ -271,7 +357,12 @@ def parse_library_upload(file):
 def library_import(request):
     if request.method != "POST":
         return fail("Метод не поддерживается", 405)
-    entries = parse_library_upload(request.FILES.get("file"))
+    entries, figure_rows, with_figures = parse_library_upload(request.FILES.get("file"))
+    incoming_owners = {figure_id: exercise_id for exercise_id, figures in figure_rows.items()
+                       for figure_id, _, _ in figures}
+    for figure in TaskFigure.objects.filter(id__in=incoming_owners):
+        if str(figure.exercise_id) != incoming_owners[str(figure.id)]:
+            raise ValueError("ID рисунка уже используется другой задачей")
     existing = {str(item.id): item for item in Exercise.objects.filter(
         id__in=[item_id for item_id, _ in entries]
     ).prefetch_related("grade_levels")}
@@ -286,8 +377,20 @@ def library_import(request):
             if not dry_run:
                 item = Exercise.objects.create(id=uuid.UUID(item_id), **values)
                 ExerciseGrade.objects.bulk_create(ExerciseGrade(exercise=item, grade=grade) for grade in grades)
+                for fig_id, content, meta in figure_rows.get(item_id, []):
+                    figure = TaskFigure(id=uuid.UUID(fig_id), exercise=item, position=meta["position"],
+                                        source_title=meta["source_title"], source_page=meta["source_page"])
+                    figure.file.save("figure.png", ContentFile(content), save=False)
+                    figure.save()
             continue
         same = all(getattr(item, key) == value for key, value in values.items()) and [g.grade for g in item.grade_levels.all()] == grades
+        if with_figures:
+            current = []
+            for fig in item.figures.all():
+                with fig.file.open("rb") as stream:
+                    current.append((str(fig.id), fig.position, fig.source_title, fig.source_page, hashlib.sha256(stream.read()).hexdigest()))
+            incoming = [(fig_id, meta["position"], meta["source_title"], meta["source_page"], meta["sha256"]) for fig_id, _, meta in figure_rows.get(item_id, [])]
+            same = same and current == incoming
         if same:
             unchanged += 1
             continue
@@ -298,6 +401,13 @@ def library_import(request):
             item.save()
             item.grade_levels.all().delete()
             ExerciseGrade.objects.bulk_create(ExerciseGrade(exercise=item, grade=grade) for grade in grades)
+        if with_figures and not dry_run:
+            item.figures.all().delete()
+            for fig_id, content, meta in figure_rows.get(item_id, []):
+                figure = TaskFigure(id=uuid.UUID(fig_id), exercise=item, position=meta["position"],
+                                    source_title=meta["source_title"], source_page=meta["source_page"])
+                figure.file.save("figure.png", ContentFile(content), save=False)
+                figure.save()
     return JsonResponse({"created": created, "updated": updated, "unchanged": unchanged,
                          "total": len(entries), "dry_run": dry_run})
 
@@ -399,6 +509,8 @@ def worksheet_items(request, worksheet_id):
                   "answer": text(data.get("answer", ""), "Решение", 10000)}
     position = max((item.position for item in worksheet.items.all()), default=0) + 1
     item = WorksheetItem.objects.create(worksheet=worksheet, source=source, position=position, **fields)
+    if source:
+        copy_figures(source, item)
     return JsonResponse(serialize_item(item), status=201)
 
 
@@ -433,6 +545,7 @@ def worksheet_items_batch(request, worksheet_id):
             worksheet=worksheet, source=source, position=position,
             title=source.title, prompt=source.prompt, answer=source.answer,
         ))
+        copy_figures(source, items[-1])
     return JsonResponse({"items": [serialize_item(item) for item in items]}, status=201)
 
 
