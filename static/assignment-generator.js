@@ -1,7 +1,7 @@
 (() => {
 const $ = selector => document.querySelector(selector);
 const schoolMode = document.body.dataset.mode === 'school';
-const state = {drafts: [], targetId: null, meta: null, pendingGeneration: null, generating: false, figureIndex: null, figureBounds: null};
+const state = {drafts: [], screenshots: [], targetId: null, meta: null, pendingGeneration: null, generating: false, figureIndex: null, figureBounds: null};
 const difficultyNames = {1: 'Базовая', 2: 'Средняя', 3: 'Повышенная', 4: 'Олимпиадная'};
 
 function esc(value = '') { return String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[char])); }
@@ -10,9 +10,9 @@ function showError(selector, message) { const el = $(selector); el.textContent =
 async function api(path, method = 'GET', payload) {
   const options = {method, headers: {'Accept': 'application/json'}};
   if (payload !== undefined) {
-    options.headers['Content-Type'] = 'application/json';
     options.headers['X-CSRFToken'] = decodeURIComponent(cookie('csrftoken'));
-    options.body = JSON.stringify(payload);
+    if (payload instanceof FormData) options.body = payload;
+    else { options.headers['Content-Type'] = 'application/json'; options.body = JSON.stringify(payload); }
   }
   const response = await fetch(path, options);
   let data;
@@ -25,6 +25,45 @@ async function api(path, method = 'GET', payload) {
 }
 function busy(form, value) { form.querySelector('button[type="submit"]').disabled = value; }
 function targetSelect() { return $('#generate-form').elements[schoolMode ? 'class_id' : 'student_id']; }
+function renderScreenshots() {
+  $('#screenshot-count').textContent = `${state.screenshots.length} из 6`;
+  $('#screenshot-list').innerHTML = state.screenshots.map((item, index) => `<figure class="screenshot-card" role="listitem"><img src="${esc(item.url)}" alt="Скриншот ${index + 1}"><figcaption><strong>${index + 1}. ${esc(item.file.name)}</strong><small>${(item.file.size / 1024 / 1024).toFixed(1)} МБ</small></figcaption><button type="button" class="icon-button" data-remove-screenshot="${index}" aria-label="Убрать скриншот ${index + 1}">×</button></figure>`).join('');
+}
+function addScreenshots(files) {
+  if (state.generating || $('#generate-form').elements.mode.value !== 'generated') return;
+  files = [...files];
+  showError('#screenshot-error', '');
+  if (state.screenshots.length + files.length > 6) { showError('#screenshot-error', 'Можно прикрепить не более 6 скриншотов. Уберите лишние и попробуйте снова.'); return; }
+  if (files.some(file => !['image/png', 'image/jpeg', 'image/webp'].includes(file.type))) { showError('#screenshot-error', 'Выберите изображения PNG, JPEG или WebP.'); return; }
+  if (files.some(file => !file.size || file.size > 10 * 1024 * 1024)) { showError('#screenshot-error', 'Каждый скриншот должен быть не больше 10 МБ.'); return; }
+  const total = [...state.screenshots.map(item => item.file), ...files].reduce((sum, file) => sum + file.size, 0);
+  if (total > 30 * 1024 * 1024) { showError('#screenshot-error', 'Общий размер скриншотов должен быть не больше 30 МБ.'); return; }
+  state.screenshots.push(...files.map(file => ({file, url: URL.createObjectURL(file)})));
+  renderScreenshots();
+}
+$('#generator-screenshot-file').addEventListener('change', event => { addScreenshots(event.target.files); event.target.value = ''; });
+$('#screenshot-list').addEventListener('click', event => {
+  const button = event.target.closest('[data-remove-screenshot]');
+  if (!button || state.generating) return;
+  const [removed] = state.screenshots.splice(Number(button.dataset.removeScreenshot), 1);
+  URL.revokeObjectURL(removed.url); renderScreenshots(); showError('#screenshot-error', '');
+});
+const screenshotZone = $('#screenshot-dropzone');
+screenshotZone.addEventListener('dragover', event => { event.preventDefault(); screenshotZone.classList.add('is-dragging'); });
+screenshotZone.addEventListener('dragleave', event => { if (!screenshotZone.contains(event.relatedTarget)) screenshotZone.classList.remove('is-dragging'); });
+screenshotZone.addEventListener('drop', event => { event.preventDefault(); screenshotZone.classList.remove('is-dragging'); addScreenshots(event.dataTransfer.files); });
+$('#generate-form').addEventListener('paste', event => {
+  const files = [...(event.clipboardData?.items || [])].filter(item => item.kind === 'file' && item.type.startsWith('image/')).map(item => item.getAsFile()).filter(Boolean);
+  if (files.length && $('#generate-form').elements.mode.value === 'generated') { event.preventDefault(); addScreenshots(files); }
+});
+window.addEventListener('beforeunload', () => state.screenshots.forEach(item => URL.revokeObjectURL(item.url)));
+function generationRequest(payload, screenshots) {
+  if (!screenshots.length) return payload;
+  const data = new FormData();
+  data.append('payload', JSON.stringify(payload));
+  screenshots.forEach(file => data.append('screenshots', file));
+  return data;
+}
 function selectedMaterials() {
   return [...document.querySelectorAll('#generator-material-list [data-material-row]')]
     .filter(row => row.querySelector('input[type="checkbox"]').checked)
@@ -70,6 +109,7 @@ function syncMode() {
     group.querySelectorAll('input,textarea,select').forEach(input => { input.disabled = !source; });
   });
   $('#generate-form button[type="submit"]').textContent = source ? 'Перенести номера в черновик' : 'Создать черновик';
+  syncEditState();
   showError('#generate-error', '');
 }
 $('#generate-form').addEventListener('change', event => { if (event.target.name === 'mode') syncMode(); });
@@ -118,6 +158,12 @@ function syncEditState() {
   const editing = Boolean($('#draft-list .assistant-draft-editor:not([hidden])'));
   $('#accept-form button[type="submit"]').disabled = editing || state.generating;
   $('#draft-edit-hint').hidden = !editing;
+  $('#generate-more-panel').hidden = !state.drafts.length || state.pendingGeneration !== null || state.meta?.mode !== 'generated' || $('#generate-form').elements.mode.value !== 'generated';
+  $('#generate-more').disabled = editing || state.generating || state.drafts.length >= 20;
+  $('#generate-more-hint').textContent = state.drafts.length >= 20
+    ? 'В черновике уже 20 задач. Сохраните их, чтобы начать следующую подборку.'
+    : `В черновике ${state.drafts.length} из 20 задач. Измените количество, скриншоты или комментарий в форме выше и добавьте ещё.`;
+  if (!state.generating) $('#generate-form button[type="submit"]').textContent = $('#generate-form').elements.mode.value === 'source' ? 'Перенести номера в черновик' : state.drafts.length ? 'Создать новый черновик' : 'Создать черновик';
 }
 
 function closeEditor(part) {
@@ -211,9 +257,13 @@ async function runGeneration() {
     }
     pending.payload.materials = materials;
     pending.payload.source_task_hint = form.elements.source_task_hint.value;
+  } else {
+    pending.payload.wishes = form.elements.wishes.value;
+    pending.screenshots = state.screenshots.map(item => item.file);
   }
   state.generating = true;
   busy(form, true);
+  form.inert = true;
   form.querySelectorAll('input[name="mode"]').forEach(input => { input.disabled = true; });
   form.setAttribute('aria-busy', 'true');
   $('#generate-loading').hidden = false;
@@ -233,14 +283,14 @@ async function runGeneration() {
         : `Создаю задачу ${pending.nextIndex + 1} из ${pending.plan.length} · ${difficultyNames[level].toLowerCase()}`;
       $('#generate-loading-text').textContent = progress;
       $('#draft-progress-text').textContent = progress;
-      const result = await api('/api/assistant/generate', 'POST', {
+      const result = await api('/api/assistant/generate', 'POST', generationRequest({
         ...pending.payload, ...(pending.payload.mode === 'generated' ? {difficulty: level} : {}),
         count: 1, source_index: pending.nextIndex + 1,
         existing_tasks: state.drafts.map(item => item.prompt.slice(0, 500)),
         ...(pending.payload.mode === 'source' ? {existing_source_numbers: state.drafts.map(item => ({
           source_material: item.source_material, source_number: item.source_number,
         }))} : {}),
-      });
+      }, pending.screenshots || []));
       if (!Array.isArray(result.exercises) || result.exercises.length !== 1 || result[schoolMode ? 'class_id' : 'student_id'] !== state.targetId) {
         throw new Error('Сервер вернул неверное количество задач.');
       }
@@ -252,7 +302,7 @@ async function runGeneration() {
     state.pendingGeneration = null;
     $('#draft-heading').textContent = `Черновик задач · ${state.drafts.length}`;
   } catch (error) {
-    const message = `Создано ${pending.nextIndex} из ${pending.plan.length}. ${error.message}`;
+    const message = `${pending.initialCount ? 'Добавлено' : 'Создано'} ${pending.nextIndex} из ${pending.plan.length}. ${error.message}`;
     showError('#draft-generation-error', message);
     $('#generate-resume').hidden = false;
   } finally {
@@ -260,6 +310,7 @@ async function runGeneration() {
     $('#draft-progress').hidden = true;
     $('#draft-list').inert = false;
     form.removeAttribute('aria-busy');
+    form.inert = false;
     state.generating = false;
     form.querySelectorAll('input[name="mode"]').forEach(input => { input.disabled = false; });
     busy(form, false);
@@ -267,38 +318,51 @@ async function runGeneration() {
   }
 }
 
-$('#generate-form').addEventListener('submit', async event => {
-  event.preventDefault();
-  const form = event.currentTarget;
+async function startGeneration(append = false) {
+  if (state.generating) return;
+  const form = $('#generate-form');
+  if (!form.reportValidity()) return;
+  if ($('#draft-list .assistant-draft-editor:not([hidden])')) { showError('#draft-generation-error', 'Сначала сохраните изменения условия или решения.'); return; }
   const source = form.elements.mode.value === 'source';
   const counts = source ? null : difficultyCounts(form);
   const total = source ? Number(form.elements.source_count.value) : Object.values(counts).reduce((sum, count) => sum + count, 0);
   if (!Number.isInteger(total) || total < 1 || total > 20 || (counts && !Object.values(counts).every(Number.isInteger))) {
     showError('#generate-error', 'Выберите от 1 до 20 задач.'); return;
   }
+  if (append && (source || state.meta?.mode !== 'generated' || targetSelect().value !== state.targetId)) {
+    showError('#draft-generation-error', 'Для продолжения выберите исходную карточку и режим «Создать новые».'); return;
+  }
+  if (append && state.drafts.length + total > 20) {
+    showError('#draft-generation-error', `В черновик можно добавить ещё ${20 - state.drafts.length} задач. Уменьшите количество в форме выше.`); return;
+  }
   const materials = source ? selectedMaterials() : [];
   if (source && (!materials.length || materials.some(item => !item.pages))) {
     showError('#generate-error', 'Выберите PDF и укажите страницы с задачами.'); return;
   }
+  if (!append && state.drafts.length && !await window.AppDialogs.confirm('Несохранённые задачи этого черновика будут заменены новой генерацией.', {title: 'Начать новый черновик?', confirmText: 'Начать заново', danger: false})) return;
   const payload = Object.fromEntries(new FormData(form).entries());
   for (const level of [1, 2, 3, 4]) delete payload[`count_${level}`];
   delete payload.source_count;
   payload.materials = materials;
-  state.drafts = [];
+  if (!append) state.drafts = [];
   state.targetId = payload[schoolMode ? 'class_id' : 'student_id'];
   state.meta = payload;
   state.pendingGeneration = {
     payload,
     plan: source ? Array(total).fill('source') : [1, 2, 3, 4].flatMap(level => Array(counts[String(level)]).fill(level)),
     nextIndex: 0,
+    initialCount: state.drafts.length,
+    screenshots: source ? [] : state.screenshots.map(item => item.file),
   };
-  $('#accept-form [name="title"]').value = `${payload.topic} · ${payload.subject}`;
-  $('#accept-form').hidden = true;
+  if (!append) $('#accept-form [name="title"]').value = `${payload.topic} · ${payload.subject}`;
+  $('#accept-form').hidden = !state.drafts.length;
   $('#draft-heading').textContent = 'Черновик задач';
   $('#accept-success').hidden = true;
   renderDrafts();
   await runGeneration();
-});
+}
+$('#generate-form').addEventListener('submit', event => { event.preventDefault(); startGeneration(); });
+$('#generate-more').addEventListener('click', () => startGeneration(true));
 
 $('#generate-resume').addEventListener('click', runGeneration);
 
@@ -330,6 +394,7 @@ $('#accept-form').addEventListener('submit', async event => {
     });
     state.drafts = [];
     state.pendingGeneration = null;
+    state.meta = null;
     $('#draft-list').innerHTML = '';
     $('#accept-form').hidden = true;
     $('#generate-resume').hidden = true;

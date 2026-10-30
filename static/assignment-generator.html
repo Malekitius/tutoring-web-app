@@ -14,7 +14,14 @@
                 <label class="field"><span>Повышенная</span><input name="count_3" type="number" min="0" max="20" value="0" required></label>
                 <label class="field"><span>Олимпиадная</span><input name="count_4" type="number" min="0" max="20" value="0" required></label>
               </div><small id="generator-total">Всего: 3 задачи</small></fieldset>
-              <label class="field" data-generated-only><span>Пожелания</span><textarea name="wishes" maxlength="1000" placeholder="Например: две задачи на применение и одна на закрепление"></textarea></label>
+              <div class="generator-screenshots" data-generated-only>
+                <div class="screenshot-heading"><strong>Скриншоты задач</strong><span id="screenshot-count">0 из 6</span></div>
+                <label id="screenshot-dropzone" class="screenshot-dropzone"><input id="generator-screenshot-file" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" multiple><span aria-hidden="true">＋</span><strong>Выберите скриншоты или перетащите сюда</strong><small>Можно вставить из буфера обмена · PNG, JPEG, WebP · до 6 файлов</small></label>
+                <div id="screenshot-list" class="screenshot-list" role="list" aria-label="Прикреплённые скриншоты"></div>
+                <p class="field-hint">По умолчанию перенесём задания с исходными данными. В комментарии укажите, какие номера пропустить или какие похожие задачи создать. Количество задач выберите выше. До 10 МБ на файл, до 30 МБ суммарно.</p>
+                <p id="screenshot-error" class="form-error" role="alert" hidden></p>
+              </div>
+              <label class="field" data-generated-only><span>Комментарий к генерации</span><textarea name="wishes" maxlength="1000" placeholder="Например: возьми только № 2 и 5; или создай похожие задачи, но поменяй числа"></textarea></label>
               <div data-source-only hidden><div class="field-row"><label class="field"><span>Сколько номеров взять</span><input name="source_count" type="number" min="1" max="20" value="3" required disabled></label><label class="field"><span>Номера задач или ориентир</span><input name="source_task_hint" maxlength="160" placeholder="Например, № 12, 14 и 16" disabled></label></div><p class="field-hint">Номер с подпунктами а), б), в) переносится как одна задача.</p>
                 <fieldset class="generator-materials"><legend>Материалы для задач</legend><p>Откройте PDF, найдите задачи и укажите страницы: 12-15, 18. Помощник перенесёт задачи с этих страниц в черновик. Для сканов номера страниц обязательны.</p><div id="generator-material-list">Загружаю материалы…</div></fieldset></div>
               <button class="button button-primary" type="submit">Создать черновик</button>
@@ -28,6 +35,7 @@
           <p id="draft-generation-error" class="form-error" role="alert" hidden></p>
           <button id="generate-resume" class="button button-secondary" type="button" hidden>Продолжить генерацию</button>
           <div id="draft-list"></div>
+          <div id="generate-more-panel" class="generator-more" hidden><div><strong>Продолжить этот черновик</strong><p id="generate-more-hint">Измените количество, скриншоты или комментарий в форме выше и добавьте ещё задачи.</p></div><button id="generate-more" class="button button-secondary" type="button">Сгенерировать ещё</button></div>
           <p id="draft-edit-hint" class="draft-edit-hint" hidden>Сохраните изменения условия или решения, чтобы сохранить задачи.</p>
           <form id="accept-form" class="assistant-save">
             <label class="field"><span>Куда сохранить</span><select name="destination"><option value="lesson">В новую подборку на урок</option><option value="homework">В новую домашнюю работу</option><option value="library">Только в библиотеку</option></select></label>

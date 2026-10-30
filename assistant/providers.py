@@ -17,16 +17,21 @@ class ProviderError(Exception):
 
 class TextProvider(Protocol):
     def complete(self, instructions: str, prompt: str, *, json_mode: bool = False,
-                 files: list[tuple[str, bytes]] | None = None) -> str: ...
+                 files: list[tuple[str, bytes]] | None = None,
+                 images: list[tuple[str, bytes]] | None = None) -> str: ...
 
 
-def user_content(prompt, files):
-    if not files:
+def user_content(prompt, files=None, images=None):
+    if not files and not images:
         return prompt
     content = [{"type": "input_text", "text": prompt}]
-    for name, data in files:
+    for name, data in files or []:
         content.append({"type": "input_file", "filename": name,
                         "file_data": "data:application/pdf;base64," + base64.b64encode(data).decode("ascii")})
+    for index, (mime, data) in enumerate(images or [], 1):
+        content.append({"type": "input_text", "text": f"Скриншот {index}"})
+        content.append({"type": "input_image", "detail": "high",
+                        "image_url": f"data:{mime};base64," + base64.b64encode(data).decode("ascii")})
     return content
 
 
@@ -36,11 +41,12 @@ class OpenAIResponsesProvider:
     model: str
 
     def complete(self, instructions: str, prompt: str, *, json_mode: bool = False,
-                 files: list[tuple[str, bytes]] | None = None) -> str:
+                 files: list[tuple[str, bytes]] | None = None,
+                 images: list[tuple[str, bytes]] | None = None) -> str:
         payload = {
             "model": self.model,
             "instructions": instructions,
-            "input": [{"role": "user", "content": user_content(prompt, files)}],
+            "input": [{"role": "user", "content": user_content(prompt, files, images)}],
             "store": False,
         }
         if json_mode:
@@ -75,7 +81,8 @@ class ChatGPTPlanProvider:
     """The same workflow via the user's authorized ChatGPT plan."""
 
     def complete(self, instructions: str, prompt: str, *, json_mode: bool = False,
-                 files: list[tuple[str, bytes]] | None = None) -> str:
+                 files: list[tuple[str, bytes]] | None = None,
+                 images: list[tuple[str, bytes]] | None = None) -> str:
         from .chatgpt_auth import credentials
 
         account = credentials()
@@ -84,7 +91,7 @@ class ChatGPTPlanProvider:
         payload = {
             "model": account["model"],
             "instructions": instructions,
-            "input": [{"role": "user", "content": user_content(prompt, files)}],
+            "input": [{"role": "user", "content": user_content(prompt, files, images)}],
             "store": False,
             "stream": True,
         }
@@ -125,6 +132,8 @@ class ChatGPTPlanProvider:
             if exc.code == 401:
                 raise ProviderError("Сессия ChatGPT недействительна. Подключите аккаунт заново.") from exc
             if exc.code == 400:
+                if images:
+                    raise ProviderError("Модель не приняла запрос со скриншотами. Проверьте поддержку изображений у выбранной модели и выберите thinking «Авто».") from exc
                 raise ProviderError("Модель не приняла выбранный режим thinking. Выберите «Авто» или другую модель.") from exc
             if exc.code == 429:
                 raise ProviderError("Достигнут лимит подписки ChatGPT. Попробуйте позже.") from exc
