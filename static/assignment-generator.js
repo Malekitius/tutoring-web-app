@@ -165,7 +165,7 @@ function syncEditState() {
   $('#generate-more').disabled = editing || state.generating || state.drafts.length >= 20;
   $('#generate-more-hint').textContent = state.drafts.length >= 20
     ? 'В черновике уже 20 задач. Сохраните их, чтобы начать следующую подборку.'
-    : `В черновике ${state.drafts.length} из 20 задач. Измените количество, ${screenshots ? 'скриншоты или комментарий' : 'сложность или комментарий'} в форме выше и добавьте ещё.`;
+    : `В черновике ${state.drafts.length} из 20 задач. Измените ${screenshots ? 'скриншоты или комментарий' : 'количество, сложность или комментарий'} в форме выше и добавьте ещё.`;
   $('#generate-more').textContent = screenshots ? 'Перенести ещё' : 'Сгенерировать ещё';
   $('#generate-resume').textContent = state.pendingGeneration?.payload.mode === 'generated' ? 'Продолжить генерацию' : 'Продолжить перенос';
   if (!state.generating) $('#generate-form button[type="submit"]').textContent = state.drafts.length
@@ -287,7 +287,9 @@ async function runGeneration() {
   try {
     while (pending.nextIndex < pending.plan.length) {
       const level = pending.plan[pending.nextIndex];
-      const progress = pending.payload.mode !== 'generated'
+      const progress = pending.payload.mode === 'screenshots'
+        ? `Переношу задачу ${pending.nextIndex + 1}`
+        : pending.payload.mode === 'source'
         ? `Переношу номер ${pending.nextIndex + 1} из ${pending.plan.length}`
         : `Создаю задачу ${pending.nextIndex + 1} из ${pending.plan.length} · ${difficultyNames[level].toLowerCase()}`;
       $('#generate-loading-text').textContent = progress;
@@ -300,18 +302,25 @@ async function runGeneration() {
           source_material: item.source_material, source_number: item.source_number,
         }))} : {}),
       }, pending.screenshots || []));
-      if (!Array.isArray(result.exercises) || result.exercises.length !== 1 || result[schoolMode ? 'class_id' : 'student_id'] !== state.targetId) {
+      const complete = pending.payload.mode === 'screenshots' && result.complete === true;
+      if (!Array.isArray(result.exercises) || (result.exercises.length !== 1 && !(complete && result.exercises.length === 0)) || result[schoolMode ? 'class_id' : 'student_id'] !== state.targetId) {
         throw new Error('Сервер вернул неверное количество задач.');
       }
+      if (!result.exercises.length) break;
       state.drafts.push({...result.exercises[0], source_refs: result.source_refs || [], figures: []});
       pending.nextIndex++;
       $('#accept-form').hidden = false;
       renderDrafts();
+      if (complete) break;
     }
     state.pendingGeneration = null;
     $('#draft-heading').textContent = `Черновик задач · ${state.drafts.length}`;
+    renderDrafts();
+    if (pending.payload.mode === 'screenshots' && !pending.nextIndex) {
+      showError('#generate-error', 'На скриншотах нет новых подходящих задач. Измените скриншоты или комментарий.');
+    }
   } catch (error) {
-    const message = `${pending.initialCount ? 'Добавлено' : 'Создано'} ${pending.nextIndex} из ${pending.plan.length}. ${error.message}`;
+    const message = `${pending.initialCount ? 'Добавлено' : 'Создано'} ${pending.nextIndex}${pending.payload.mode === 'screenshots' ? '' : ` из ${pending.plan.length}`}. ${error.message}`;
     showError('#draft-generation-error', message);
     $('#generate-resume').hidden = false;
   } finally {
@@ -337,7 +346,7 @@ async function startGeneration(append = false) {
   const screenshots = mode === 'screenshots';
   const counts = mode === 'generated' ? difficultyCounts(form) : null;
   const total = counts ? Object.values(counts).reduce((sum, count) => sum + count, 0)
-    : Number(form.elements[screenshots ? 'screenshot_task_count' : 'source_count'].value);
+    : screenshots ? 20 - (append ? state.drafts.length : 0) : Number(form.elements.source_count.value);
   if (!Number.isInteger(total) || total < 1 || total > 20 || (counts && !Object.values(counts).every(Number.isInteger))) {
     showError('#generate-error', 'Выберите от 1 до 20 задач.'); return;
   }
@@ -358,7 +367,6 @@ async function startGeneration(append = false) {
   const payload = Object.fromEntries(new FormData(form).entries());
   for (const level of [1, 2, 3, 4]) delete payload[`count_${level}`];
   delete payload.source_count;
-  delete payload.screenshot_task_count;
   payload.materials = materials;
   if (!append) state.drafts = [];
   state.targetId = payload[schoolMode ? 'class_id' : 'student_id'];

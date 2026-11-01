@@ -26,7 +26,7 @@ class ScreenshotGenerationTests(TestCase):
         self.student = Student.objects.create(name="Тестовый ученик", grade=7, opening_balance_rub=500)
         self.payment = Payment.objects.create(student=self.student, paid_on="2026-10-30", amount_rub=1500)
         self.payload = {"student_id": str(self.student.id), "subject": "Алгебра", "topic": "Уравнения",
-                        "mode": "screenshots", "count": 1,
+                        "mode": "screenshots",
                         "wishes": "Не бери № 3; для № 5 создай похожую задачу с другими числами"}
         self.task = {"exercises": [{"title": "Уравнение", "prompt": "Решите $2x=6$.", "answer": "$x=3$."}]}
 
@@ -118,7 +118,7 @@ class ScreenshotGenerationTests(TestCase):
     def test_plain_generation_does_not_require_or_send_screenshots(self, factory):
         factory.return_value.complete.return_value = json.dumps(self.task)
         response = self.client.post("/api/assistant/generate", json.dumps({
-            **self.payload, "mode": "generated", "difficulty": 1}), content_type="application/json")
+            **self.payload, "mode": "generated", "difficulty": 1, "count": 1}), content_type="application/json")
         self.assertEqual(response.status_code, 200, response.content)
         self.assertNotIn("images", factory.return_value.complete.call_args.kwargs)
         self.assertNotIn("переносишь задачи со скриншотов", factory.return_value.complete.call_args.args[0])
@@ -130,6 +130,30 @@ class ScreenshotGenerationTests(TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertIn("не осталось", response.json()["error"])
         self.assertFalse(Exercise.objects.exists())
+
+    @patch("assistant.views.get_provider")
+    def test_automatic_transfer_marks_the_last_task_without_requiring_a_count(self, factory):
+        factory.return_value.complete.return_value = json.dumps({**self.task, "complete": True})
+        response = self.generate([self.screenshot()])
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(response.json()["complete"])
+        self.assertEqual(len(response.json()["exercises"]), 1)
+        self.assertIn("Поле complete", factory.return_value.complete.call_args.args[0])
+
+    @patch("assistant.views.get_provider")
+    def test_exhausted_screenshots_finish_without_retry_or_placeholder_task(self, factory):
+        factory.return_value.complete.return_value = '{"exercises": [], "complete": true}'
+        response = self.generate([self.screenshot()], {**self.payload, "existing_tasks": ["Решите $2x=6$."]})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["exercises"], [])
+        self.assertTrue(response.json()["complete"])
+        self.assertEqual(factory.return_value.complete.call_count, 1)
+
+    @patch("assistant.views.get_provider")
+    def test_unreadable_screenshots_are_not_treated_as_successful_completion(self, factory):
+        factory.return_value.complete.return_value = '{"exercises": [], "complete": false}'
+        response = self.generate([self.screenshot()])
+        self.assertEqual(response.status_code, 422)
 
     @patch("assistant.views.get_provider")
     def test_continuation_retries_a_duplicate_and_passes_previous_tasks(self, factory):

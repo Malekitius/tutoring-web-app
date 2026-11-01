@@ -317,6 +317,9 @@ def generate_exercises(request):
         difficulty = number(data.get("difficulty", 2), "Сложность", 1, 4)
         count = number(data.get("count", 3), "Количество задач", 1, 20)
         counts = {str(level): count if level == difficulty else 0 for level in range(1, 5)}
+    elif mode == "screenshots":
+        count = 1
+        counts = {}
     else:
         count = number(data.get("count", 1), "Количество задач", 1, 20)
         counts = {}
@@ -369,16 +372,19 @@ def generate_exercises(request):
     if mode == "screenshots":
         instructions = (
             "Ты переносишь задачи со скриншотов. Ответь только JSON-объектом с полем exercises — массивом "
-            "строго запрошенной длины. У каждой задачи поля title, prompt, answer, difficulty. "
+            "с ОДНОЙ следующей подходящей задачей. У каждой задачи поля title, prompt, answer, difficulty. "
+            "Поле complete — логическое: true, если после этой задачи больше нет подходящих неперенесённых задач, иначе false. "
             "difficulty — оценка сложности от 1 до 4. "
             "К запросу прикреплены скриншоты с задачами, пронумерованные по порядку. "
             "По умолчанию переноси задачи со скриншотов с исходными условиями и числами. "
             "Комментарий преподавателя в поле пожелания имеет приоритет: пропускай исключённые номера и подпункты, "
             "а если он просит похожие задачи, составляй новые того же типа с другими значениями. "
+            "Для похожих задач по умолчанию сделай один вариант каждого выбранного номера; явно указанное в комментарии количество имеет приоритет. "
             "Один нумерованный номер со всеми его подпунктами — одна задача; подпункты оформляй с новой строки. "
             "Реши каждый перенесённый или изменённый пример. Не повторяй уже составленные условия. "
             "Не заменяй задачу со скриншота выдуманной без просьбы преподавателя. "
-            "Если подходящие задачи закончились или изображение неразборчиво, верни пустой массив exercises. "
+            "Если все подходящие задачи уже перенесены или исключены комментарием, верни exercises: [] и complete: true. "
+            "Если изображение неразборчиво, верни exercises: [] и complete: false. "
             + common_rules
         )
     context = student_context(student) if student and mode == "generated" else None
@@ -443,6 +449,11 @@ def generate_exercises(request):
                 raw_rows = parsed.get("exercises") if isinstance(parsed, dict) else None
                 if mode == "source" and raw_rows == []:
                     raise ValueError("задача не найдена на изображении выбранной страницы PDF")
+                if mode == "screenshots" and raw_rows == [] and parsed.get("complete") is True:
+                    return JsonResponse({"exercises": [], "complete": True,
+                                         "student_id": str(student.id) if student else None,
+                                         "class_id": str(school_class.id) if school_class else None,
+                                         "source_refs": []})
                 if images and raw_rows == []:
                     raise ValueError("подходящие задачи на скриншотах закончились или неразборчивы")
                 if not isinstance(raw_rows, list) or len(raw_rows) != count:
@@ -473,6 +484,7 @@ def generate_exercises(request):
                 exercises.append(exercise)
             return JsonResponse({"exercises": exercises, "student_id": str(student.id) if student else None,
                                  "class_id": str(school_class.id) if school_class else None,
+                                 **({"complete": parsed.get("complete") is True} if mode == "screenshots" else {}),
                                  "source_refs": source_refs})
         except ProviderError as exc:
             return fail(str(exc), 503)
