@@ -501,6 +501,19 @@ def generate_exercises(request):
 
 
 @api_errors
+def crop_screenshot_figure(request):
+    """Crop locally; never contact the model or persist the original upload."""
+    if request.method != "POST":
+        return fail("Метод не поддерживается", 405)
+    from .screenshots import crop_screenshot, generation_data
+    data = generation_data(request)
+    uploads = request.FILES.getlist("screenshots")
+    if len(uploads) != 1:
+        raise ValueError("Выберите один скриншот для рисунка")
+    return JsonResponse(crop_screenshot(uploads[0], data))
+
+
+@api_errors
 @transaction.atomic
 def accept_exercises(request):
     """Only an explicit teacher request saves drafts; this endpoint cannot touch money."""

@@ -10,9 +10,10 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from PIL import Image, PngImagePlugin
 
-from assignments.models import Exercise
+from assignments.models import Exercise, Worksheet
+from assignments.figures import figure_data
 from finances.models import Payment
-from school.models import SchoolClass
+from school.models import SchoolClass, SchoolWorksheet
 from students.models import Student
 from .providers import ChatGPTPlanProvider, OpenAIResponsesProvider, user_content
 from .screenshots import prepare_screenshots
@@ -41,6 +42,59 @@ class ScreenshotGenerationTests(TestCase):
     def generate(self, screenshots, payload=None):
         return self.client.post("/api/assistant/generate", {"payload": json.dumps(payload or self.payload),
                                                            "screenshots": screenshots})
+
+    def crop(self, screenshots=None, bounds=None):
+        return self.client.post("/api/assistant/screenshots/crop", {
+            "payload": json.dumps(bounds or {"x": .25, "y": .2, "width": .5, "height": .5}),
+            "screenshots": [self.screenshot(size=(400, 300))] if screenshots is None else screenshots})
+
+    @patch("assistant.views.get_provider")
+    def test_crop_uses_original_pixels_without_model_or_persistent_upload(self, factory):
+        response = self.crop()
+        self.assertEqual(response.status_code, 200, response.content)
+        content, title, page = figure_data(response.json())
+        self.assertEqual((title, page), ("Скриншот: screen-0.png", 1))
+        with Image.open(io.BytesIO(content)) as image:
+            self.assertEqual(image.size, (200, 150))
+            self.assertEqual(image.getpixel((0, 0)), (0, 60, 120))
+            self.assertNotIn("private_metadata", image.info)
+        self.assertFalse((Path(self.temp.name) / "uploads").exists())
+        factory.assert_not_called()
+
+    def test_invalid_crop_uploads_and_bounds_are_rejected(self):
+        for files in ([], [self.screenshot(), self.screenshot()], [SimpleUploadedFile("bad.png", b"bad")]):
+            self.assertEqual(self.crop(screenshots=files).status_code, 400)
+        for bounds in ({"x": .9, "y": 0, "width": .5, "height": .5},
+                       {"x": 0, "y": 0, "width": float("nan"), "height": .5},
+                       {"x": 0, "y": 0, "width": .03, "height": .03},
+                       {"x": "bad"}):
+            self.assertEqual(self.crop(bounds=bounds).status_code, 400)
+        self.assertEqual(self.client.get("/api/assistant/screenshots/crop").status_code, 405)
+
+    def test_screenshot_crop_is_saved_to_library_and_tutoring_or_school_worksheet(self):
+        school = SchoolClass.objects.create(name="7Б", subject="Математика")
+        for target in ({"student_id": str(self.student.id)}, {"class_id": str(school.id), "grade": 7}):
+            with self.subTest(target=target):
+                figure = self.crop().json()
+                response = self.client.post("/api/assistant/accept", json.dumps({
+                    **target, "destination": "homework", "title": "Графики со скриншота",
+                    "exercises": [{**self.task["exercises"][0], "subject": "Алгебра", "topic": "Графики",
+                                   "grades": [7], "difficulty": 2, "figures": [figure]}]}), content_type="application/json")
+                self.assertEqual(response.status_code, 201, response.content)
+                exercise = Exercise.objects.get(id=response.json()["exercise_ids"][0])
+                self.assertEqual(exercise.figures.count(), 1)
+                worksheet_model = Worksheet if "student_id" in target else SchoolWorksheet
+                worksheet = worksheet_model.objects.get(id=response.json()["worksheet"]["id"])
+                saved_figure = worksheet.items.first().figures.get()
+                self.assertEqual(saved_figure.source_title, figure["source_title"])
+                from assignments.pdf_export import build_source
+                self.assertIn(f"figures/{saved_figure.id}.png", build_source(
+                    worksheet, figure_paths={str(saved_figure.id): f"figures/{saved_figure.id}.png"}))
+                with exercise.figures.first().file.open("rb") as stream:
+                    self.assertEqual(stream.read(), base64.b64decode(figure["png"]))
+        self.student.refresh_from_db()
+        self.payment.refresh_from_db()
+        self.assertEqual((self.student.opening_balance_rub, self.payment.amount_rub), (500, 1500))
 
     @patch("assistant.views.get_provider")
     def test_six_screenshots_and_comment_reach_provider_in_order_without_saving(self, factory):

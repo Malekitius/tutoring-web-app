@@ -1,7 +1,7 @@
 (() => {
 const $ = selector => document.querySelector(selector);
 const schoolMode = document.body.dataset.mode === 'school';
-const state = {drafts: [], screenshots: [], targetId: null, meta: null, pendingGeneration: null, generating: false, figureIndex: null, figureBounds: null};
+const state = {drafts: [], screenshots: [], targetId: null, meta: null, pendingGeneration: null, generating: false, figureIndex: null, figureBounds: null, figureKind: 'pdf', figureObjectUrl: null, croppingFigure: false};
 const difficultyNames = {1: 'Базовая', 2: 'Средняя', 3: 'Повышенная', 4: 'Олимпиадная'};
 
 function esc(value = '') { return String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[char])); }
@@ -136,7 +136,7 @@ function renderDrafts() {
       <div class="assistant-draft-preview" data-preview="prompt">${esc(item.prompt)}</div>
       <div class="assistant-draft-editor" hidden><label class="field"><span>LaTeX-код условия</span><textarea name="prompt" maxlength="10000" required>${esc(item.prompt)}</textarea></label><div class="assistant-draft-actions"><button class="button button-primary" type="button" data-save-edit="prompt">Сохранить</button><button class="button button-secondary" type="button" data-cancel-edit="prompt">Отмена</button></div></div>
     </div>
-    ${item.source_refs?.some(ref => ref.id) ? `<div class="draft-figures"><div class="assistant-draft-part-head"><span>Рисунки и графики</span><button class="text-button" type="button" data-add-figure="${index}" ${item.figures?.length >= 5 ? 'disabled' : ''}>＋ Добавить из PDF</button></div>${(item.figures || []).map((figure, figureIndex) => `<figure><img src="data:image/png;base64,${figure.png}" alt="Рисунок ${figureIndex + 1} из ${esc(figure.source_title)}, страница ${figure.source_page}"><figcaption>${esc(figure.source_title)} · стр. ${figure.source_page} <button class="text-button danger-text" type="button" data-remove-figure="${figureIndex}">Убрать</button></figcaption></figure>`).join('')}</div>` : ''}
+    ${item.source_refs?.some(ref => ref.id) || item.screenshot_sources?.length || item.figures?.length ? `<div class="draft-figures"><div class="assistant-draft-part-head"><span>Рисунки и графики</span><button class="text-button" type="button" data-add-figure="${index}" data-figure-kind="${item.screenshot_sources?.length ? 'screenshot' : 'pdf'}" ${item.figures?.length >= 5 ? 'disabled' : ''}>＋ Добавить ${item.screenshot_sources?.length ? 'со скриншота' : 'из PDF'}</button></div>${(item.figures || []).map((figure, figureIndex) => `<figure><img src="data:image/png;base64,${figure.png}" alt="Рисунок ${figureIndex + 1} из ${esc(figure.source_title)}"><figcaption>${esc(figure.source_title)}${figure.source_title.startsWith('Скриншот: ') ? '' : ` · стр. ${figure.source_page}`} <button class="text-button danger-text" type="button" data-remove-figure="${figureIndex}">Убрать</button></figcaption></figure>`).join('')}</div>` : ''}
     <div class="assistant-draft-rendered" data-part="answer">
       <div class="assistant-draft-part-head"><span>Решение и ответ</span><button class="text-button" type="button" data-edit="answer">Изменить решение</button></div>
       <div class="assistant-draft-preview" data-preview="answer">${esc(item.answer)}</div>
@@ -181,7 +181,7 @@ function closeEditor(part) {
 
 $('#draft-list').addEventListener('click', event => {
   const addFigure = event.target.closest('[data-add-figure]');
-  if (addFigure) { openFigure(Number(addFigure.dataset.addFigure)); return; }
+  if (addFigure) { openFigure(Number(addFigure.dataset.addFigure), addFigure.dataset.figureKind); return; }
   const removeFigure = event.target.closest('[data-remove-figure]');
   if (removeFigure) {
     state.drafts[Number(removeFigure.closest('.assistant-draft').dataset.index)].figures.splice(Number(removeFigure.dataset.removeFigure), 1);
@@ -307,7 +307,7 @@ async function runGeneration() {
         throw new Error('Сервер вернул неверное количество задач.');
       }
       if (!result.exercises.length) break;
-      state.drafts.push({...result.exercises[0], source_refs: result.source_refs || [], figures: []});
+      state.drafts.push({...result.exercises[0], source_refs: result.source_refs || [], figures: [], screenshot_sources: [...(pending.screenshots || [])]});
       pending.nextIndex++;
       $('#accept-form').hidden = false;
       renderDrafts();
@@ -414,7 +414,7 @@ $('#accept-form').addEventListener('submit', async event => {
       [schoolMode ? 'class_id' : 'student_id']: state.targetId,
       ...(schoolMode ? {grade: Number($('#generate-form').elements.grade.value)} : {}),
       destination: form.elements.destination.value,
-      title: form.elements.title.value, exercises: state.drafts,
+      title: form.elements.title.value, exercises: state.drafts.map(({screenshot_sources, ...item}) => item),
     });
     state.drafts = [];
     state.pendingGeneration = null;
@@ -432,23 +432,43 @@ $('#accept-form').addEventListener('submit', async event => {
   finally { busy(form, false); syncEditState(); }
 });
 
-function figureRefs() { return state.drafts[state.figureIndex]?.source_refs?.filter(ref => ref.id) || []; }
+function figureRefs() {
+  const draft = state.drafts[state.figureIndex];
+  return state.figureKind === 'screenshot'
+    ? (draft?.screenshot_sources || []).map((file, index) => ({id: String(index), title: `${index + 1}. ${file.name}`, file}))
+    : draft?.source_refs?.filter(ref => ref.id) || [];
+}
 function updateFigurePages() {
   const ref = figureRefs().find(item => item.id === $('#figure-material').value);
   $('#figure-page').innerHTML = (ref?.pages || []).map(page => `<option value="${page}">${page}</option>`).join('');
   updateFigureImage();
 }
 function updateFigureImage() {
+  figureStart = null;
   state.figureBounds = null;
   $('#figure-selection').style.display = 'none';
   $('#figure-save').disabled = true;
   showError('#figure-error', '');
+  if (state.figureObjectUrl) { URL.revokeObjectURL(state.figureObjectUrl); state.figureObjectUrl = null; }
   const id = $('#figure-material').value, page = $('#figure-page').value;
-  if (id && page) $('#figure-page-image').src = `/api/materials/${encodeURIComponent(id)}/page/${encodeURIComponent(page)}.png`;
+  if (state.figureKind === 'screenshot') {
+    const ref = figureRefs().find(item => item.id === id);
+    if (ref) { state.figureObjectUrl = URL.createObjectURL(ref.file); $('#figure-page-image').src = state.figureObjectUrl; }
+  } else if (id && page) $('#figure-page-image').src = `/api/materials/${encodeURIComponent(id)}/page/${encodeURIComponent(page)}.png`;
 }
-function openFigure(index) {
-  if (state.generating || !state.drafts[index]?.source_refs?.some(ref => ref.id)) return;
+function openFigure(index, kind = 'pdf') {
+  if (state.generating || state.croppingFigure || !state.drafts[index] || state.drafts[index].figures.length >= 5) return;
   state.figureIndex = index;
+  state.figureKind = kind;
+  const screenshots = kind === 'screenshot';
+  $('#figure-dialog').dataset.kind = kind;
+  $('#figure-dialog-eyebrow').textContent = screenshots ? 'РИСУНОК СО СКРИНШОТА' : 'РИСУНОК ИЗ МАТЕРИАЛА';
+  $('#figure-dialog-title').textContent = screenshots ? 'Выделите график на скриншоте' : 'Выделите график на странице';
+  $('#figure-source-label').textContent = screenshots ? 'Скриншот' : 'Материал';
+  $('#figure-page-field').hidden = screenshots;
+  $('#figure-page-image').alt = screenshots ? 'Скриншот для выделения рисунка' : 'Страница учебника для выделения рисунка';
+  $('#figure-zoom').value = '1';
+  $('#figure-page-image').style.maxHeight = '60vh';
   $('#figure-material').innerHTML = figureRefs().map(ref => `<option value="${esc(ref.id)}">${esc(ref.title)}</option>`).join('');
   updateFigurePages();
   $('#figure-dialog').showModal();
@@ -462,7 +482,13 @@ $('#figure-zoom').addEventListener('change', () => {
   $('#figure-page-image').style.maxHeight = `${60 * Number($('#figure-zoom').value)}vh`;
 });
 for (const id of ['figure-close', 'figure-cancel']) $(`#${id}`).addEventListener('click', () => $('#figure-dialog').close());
-$('#figure-page-image').addEventListener('error', () => showError('#figure-error', 'Не удалось открыть страницу PDF.'));
+$('#figure-dialog').addEventListener('cancel', event => { if (state.croppingFigure) event.preventDefault(); });
+$('#figure-dialog').addEventListener('close', () => {
+  figureStart = null;
+  if (state.figureObjectUrl) { URL.revokeObjectURL(state.figureObjectUrl); state.figureObjectUrl = null; }
+  $('#figure-page-image').removeAttribute('src');
+});
+$('#figure-page-image').addEventListener('error', () => showError('#figure-error', state.figureKind === 'screenshot' ? 'Не удалось открыть скриншот.' : 'Не удалось открыть страницу PDF.'));
 const figureImage = $('#figure-page-image');
 let figureStart = null;
 function figurePoint(event) {
@@ -492,17 +518,27 @@ figureImage.addEventListener('pointerup', () => {
   figureStart = null;
   $('#figure-save').disabled = !state.figureBounds || state.figureBounds.width < .02 || state.figureBounds.height < .02;
 });
+figureImage.addEventListener('pointercancel', () => { figureStart = null; state.figureBounds = null; $('#figure-selection').style.display = 'none'; $('#figure-save').disabled = true; });
 $('#figure-save').addEventListener('click', async () => {
-  if (!state.figureBounds || state.figureIndex === null) return;
+  if (!state.figureBounds || state.figureIndex === null || state.croppingFigure) return;
+  state.croppingFigure = true;
+  $('#figure-dialog').inert = true;
   const button = $('#figure-save'); button.disabled = true; button.textContent = 'Вырезаю рисунок…';
   try {
-    const result = await api(`/api/materials/${encodeURIComponent($('#figure-material').value)}/crop`, 'POST',
-      {page: Number($('#figure-page').value), ...state.figureBounds});
+    let result;
+    if (state.figureKind === 'screenshot') {
+      const ref = figureRefs().find(item => item.id === $('#figure-material').value);
+      if (!ref) throw new Error('Выберите скриншот.');
+      result = await api('/api/assistant/screenshots/crop', 'POST', generationRequest(state.figureBounds, [ref.file]));
+    } else {
+      result = await api(`/api/materials/${encodeURIComponent($('#figure-material').value)}/crop`, 'POST',
+        {page: Number($('#figure-page').value), ...state.figureBounds});
+    }
     state.drafts[state.figureIndex].figures.push(result);
     $('#figure-dialog').close();
     renderDrafts();
   } catch (error) { showError('#figure-error', error.message); }
-  finally { button.textContent = 'Добавить рисунок'; button.disabled = false; }
+  finally { state.croppingFigure = false; $('#figure-dialog').inert = false; button.textContent = 'Добавить рисунок'; button.disabled = false; }
 });
 
 async function init() {
