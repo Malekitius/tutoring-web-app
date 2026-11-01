@@ -30,7 +30,7 @@ function renderScreenshots() {
   $('#screenshot-list').innerHTML = state.screenshots.map((item, index) => `<figure class="screenshot-card" role="listitem"><img src="${esc(item.url)}" alt="Скриншот ${index + 1}"><figcaption><strong>${index + 1}. ${esc(item.file.name)}</strong><small>${(item.file.size / 1024 / 1024).toFixed(1)} МБ</small></figcaption><button type="button" class="icon-button" data-remove-screenshot="${index}" aria-label="Убрать скриншот ${index + 1}">×</button></figure>`).join('');
 }
 function addScreenshots(files) {
-  if (state.generating || $('#generate-form').elements.mode.value !== 'generated') return;
+  if (state.generating || $('#generate-form').elements.mode.value !== 'screenshots') return;
   files = [...files];
   showError('#screenshot-error', '');
   if (state.screenshots.length + files.length > 6) { showError('#screenshot-error', 'Можно прикрепить не более 6 скриншотов. Уберите лишние и попробуйте снова.'); return; }
@@ -54,7 +54,7 @@ screenshotZone.addEventListener('dragleave', event => { if (!screenshotZone.cont
 screenshotZone.addEventListener('drop', event => { event.preventDefault(); screenshotZone.classList.remove('is-dragging'); addScreenshots(event.dataTransfer.files); });
 $('#generate-form').addEventListener('paste', event => {
   const files = [...(event.clipboardData?.items || [])].filter(item => item.kind === 'file' && item.type.startsWith('image/')).map(item => item.getAsFile()).filter(Boolean);
-  if (files.length && $('#generate-form').elements.mode.value === 'generated') { event.preventDefault(); addScreenshots(files); }
+  if (files.length && $('#generate-form').elements.mode.value === 'screenshots') { event.preventDefault(); addScreenshots(files); }
 });
 window.addEventListener('beforeunload', () => state.screenshots.forEach(item => URL.revokeObjectURL(item.url)));
 function generationRequest(payload, screenshots) {
@@ -98,17 +98,18 @@ $('#generator-material-list').addEventListener('change', event => {
 });
 
 function syncMode() {
-  const source = $('#generate-form').elements.mode.value === 'source';
-  document.querySelector('.generator-mode').dataset.mode = source ? 'source' : 'generated';
-  document.querySelectorAll('[data-generated-only]').forEach(group => {
-    group.hidden = source;
-    group.querySelectorAll('input,textarea,select').forEach(input => { input.disabled = source; });
+  const form = $('#generate-form');
+  const mode = form.elements.mode.value;
+  document.querySelector('.generator-mode').dataset.mode = mode;
+  document.querySelectorAll('[data-generator-modes]').forEach(group => {
+    const visible = group.dataset.generatorModes.split(' ').includes(mode);
+    group.hidden = !visible;
+    group.querySelectorAll('input,textarea,select').forEach(input => { input.disabled = !visible; });
   });
-  document.querySelectorAll('[data-source-only]').forEach(group => {
-    group.hidden = !source;
-    group.querySelectorAll('input,textarea,select').forEach(input => { input.disabled = !source; });
-  });
-  $('#generate-form button[type="submit"]').textContent = source ? 'Перенести номера в черновик' : 'Создать черновик';
+  $('#generation-comment-label').textContent = mode === 'screenshots' ? 'Комментарий к переносу' : 'Комментарий к генерации';
+  form.elements.wishes.placeholder = mode === 'screenshots'
+    ? 'Например: возьми только № 2 и 5; или создай похожие задачи, но поменяй числа'
+    : 'Например: задачи на дроби с практическим сюжетом';
   syncEditState();
   showError('#generate-error', '');
 }
@@ -155,15 +156,20 @@ $('#draft-list').addEventListener('input', event => {
 });
 
 function syncEditState() {
+  const mode = $('#generate-form').elements.mode.value;
+  const screenshots = mode === 'screenshots';
   const editing = Boolean($('#draft-list .assistant-draft-editor:not([hidden])'));
   $('#accept-form button[type="submit"]').disabled = editing || state.generating;
   $('#draft-edit-hint').hidden = !editing;
-  $('#generate-more-panel').hidden = !state.drafts.length || state.pendingGeneration !== null || state.meta?.mode !== 'generated' || $('#generate-form').elements.mode.value !== 'generated';
+  $('#generate-more-panel').hidden = !state.drafts.length || state.pendingGeneration !== null || mode === 'source' || state.meta?.mode !== mode;
   $('#generate-more').disabled = editing || state.generating || state.drafts.length >= 20;
   $('#generate-more-hint').textContent = state.drafts.length >= 20
     ? 'В черновике уже 20 задач. Сохраните их, чтобы начать следующую подборку.'
-    : `В черновике ${state.drafts.length} из 20 задач. Измените количество, скриншоты или комментарий в форме выше и добавьте ещё.`;
-  if (!state.generating) $('#generate-form button[type="submit"]').textContent = $('#generate-form').elements.mode.value === 'source' ? 'Перенести номера в черновик' : state.drafts.length ? 'Создать новый черновик' : 'Создать черновик';
+    : `В черновике ${state.drafts.length} из 20 задач. Измените количество, ${screenshots ? 'скриншоты или комментарий' : 'сложность или комментарий'} в форме выше и добавьте ещё.`;
+  $('#generate-more').textContent = screenshots ? 'Перенести ещё' : 'Сгенерировать ещё';
+  $('#generate-resume').textContent = state.pendingGeneration?.payload.mode === 'generated' ? 'Продолжить генерацию' : 'Продолжить перенос';
+  if (!state.generating) $('#generate-form button[type="submit"]').textContent = state.drafts.length
+    ? 'Создать новый черновик' : mode === 'source' ? 'Перенести номера в черновик' : screenshots ? 'Перенести задачи в черновик' : 'Создать черновик';
 }
 
 function closeEditor(part) {
@@ -259,7 +265,10 @@ async function runGeneration() {
     pending.payload.source_task_hint = form.elements.source_task_hint.value;
   } else {
     pending.payload.wishes = form.elements.wishes.value;
-    pending.screenshots = state.screenshots.map(item => item.file);
+    pending.screenshots = pending.payload.mode === 'screenshots' ? state.screenshots.map(item => item.file) : [];
+    if (pending.payload.mode === 'screenshots' && !pending.screenshots.length) {
+      showError('#draft-generation-error', 'Прикрепите хотя бы один скриншот с задачами.'); return;
+    }
   }
   state.generating = true;
   busy(form, true);
@@ -278,7 +287,7 @@ async function runGeneration() {
   try {
     while (pending.nextIndex < pending.plan.length) {
       const level = pending.plan[pending.nextIndex];
-      const progress = pending.payload.mode === 'source'
+      const progress = pending.payload.mode !== 'generated'
         ? `Переношу номер ${pending.nextIndex + 1} из ${pending.plan.length}`
         : `Создаю задачу ${pending.nextIndex + 1} из ${pending.plan.length} · ${difficultyNames[level].toLowerCase()}`;
       $('#generate-loading-text').textContent = progress;
@@ -323,14 +332,17 @@ async function startGeneration(append = false) {
   const form = $('#generate-form');
   if (!form.reportValidity()) return;
   if ($('#draft-list .assistant-draft-editor:not([hidden])')) { showError('#draft-generation-error', 'Сначала сохраните изменения условия или решения.'); return; }
-  const source = form.elements.mode.value === 'source';
-  const counts = source ? null : difficultyCounts(form);
-  const total = source ? Number(form.elements.source_count.value) : Object.values(counts).reduce((sum, count) => sum + count, 0);
+  const mode = form.elements.mode.value;
+  const source = mode === 'source';
+  const screenshots = mode === 'screenshots';
+  const counts = mode === 'generated' ? difficultyCounts(form) : null;
+  const total = counts ? Object.values(counts).reduce((sum, count) => sum + count, 0)
+    : Number(form.elements[screenshots ? 'screenshot_task_count' : 'source_count'].value);
   if (!Number.isInteger(total) || total < 1 || total > 20 || (counts && !Object.values(counts).every(Number.isInteger))) {
     showError('#generate-error', 'Выберите от 1 до 20 задач.'); return;
   }
-  if (append && (source || state.meta?.mode !== 'generated' || targetSelect().value !== state.targetId)) {
-    showError('#draft-generation-error', 'Для продолжения выберите исходную карточку и режим «Создать новые».'); return;
+  if (append && (source || state.meta?.mode !== mode || targetSelect().value !== state.targetId)) {
+    showError('#draft-generation-error', 'Для продолжения выберите исходную карточку и прежний режим составления задач.'); return;
   }
   if (append && state.drafts.length + total > 20) {
     showError('#draft-generation-error', `В черновик можно добавить ещё ${20 - state.drafts.length} задач. Уменьшите количество в форме выше.`); return;
@@ -339,20 +351,24 @@ async function startGeneration(append = false) {
   if (source && (!materials.length || materials.some(item => !item.pages))) {
     showError('#generate-error', 'Выберите PDF и укажите страницы с задачами.'); return;
   }
+  if (screenshots && !state.screenshots.length) {
+    showError('#generate-error', 'Прикрепите хотя бы один скриншот с задачами.'); return;
+  }
   if (!append && state.drafts.length && !await window.AppDialogs.confirm('Несохранённые задачи этого черновика будут заменены новой генерацией.', {title: 'Начать новый черновик?', confirmText: 'Начать заново', danger: false})) return;
   const payload = Object.fromEntries(new FormData(form).entries());
   for (const level of [1, 2, 3, 4]) delete payload[`count_${level}`];
   delete payload.source_count;
+  delete payload.screenshot_task_count;
   payload.materials = materials;
   if (!append) state.drafts = [];
   state.targetId = payload[schoolMode ? 'class_id' : 'student_id'];
   state.meta = payload;
   state.pendingGeneration = {
     payload,
-    plan: source ? Array(total).fill('source') : [1, 2, 3, 4].flatMap(level => Array(counts[String(level)]).fill(level)),
+    plan: counts ? [1, 2, 3, 4].flatMap(level => Array(counts[String(level)]).fill(level)) : Array(total).fill(mode),
     nextIndex: 0,
     initialCount: state.drafts.length,
-    screenshots: source ? [] : state.screenshots.map(item => item.file),
+    screenshots: screenshots ? state.screenshots.map(item => item.file) : [],
   };
   if (!append) $('#accept-form [name="title"]').value = `${payload.topic} · ${payload.subject}`;
   $('#accept-form').hidden = !state.drafts.length;

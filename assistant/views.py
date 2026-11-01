@@ -291,14 +291,16 @@ def generate_exercises(request):
     subtopic = text(data.get("subtopic", ""), "Подтема", 160)
     materials = data.get("materials", [])
     mode = data.get("mode", "source" if materials else "generated")
-    if mode not in {"generated", "source"}:
+    if mode not in {"generated", "source", "screenshots"}:
         raise ValueError("Выберите способ составления задач")
     uploads = request.FILES.getlist("screenshots")
-    if uploads and mode != "generated":
-        raise ValueError("Скриншоты прикрепляются в режиме «Создать новые»")
+    if uploads and mode != "screenshots":
+        raise ValueError("Скриншоты прикрепляются в режиме «Перенос со скринов»")
+    if mode == "screenshots" and not uploads:
+        raise ValueError("Прикрепите хотя бы один скриншот с задачами")
     images = prepare_screenshots(uploads)
-    if mode == "generated" and materials:
-        raise ValueError("В режиме создания новых задач материалы не выбираются")
+    if mode != "source" and materials:
+        raise ValueError("PDF выбираются только в режиме «Из материалов»")
     if mode == "source" and (not isinstance(materials, list) or not materials or
                              any(not isinstance(item, dict) or not item.get("pages") for item in materials)):
         raise ValueError("Выберите материал и укажите страницы с задачами")
@@ -364,16 +366,20 @@ def generate_exercises(request):
         "Если подходящей задачи нет или страница неразборчива, верни пустой массив exercises. "
         + common_rules
     )
-    if images:
-        instructions += (
-            " К запросу прикреплены скриншоты с задачами, пронумерованные по порядку. "
+    if mode == "screenshots":
+        instructions = (
+            "Ты переносишь задачи со скриншотов. Ответь только JSON-объектом с полем exercises — массивом "
+            "строго запрошенной длины. У каждой задачи поля title, prompt, answer, difficulty. "
+            "difficulty — оценка сложности от 1 до 4. "
+            "К запросу прикреплены скриншоты с задачами, пронумерованные по порядку. "
             "По умолчанию переноси задачи со скриншотов с исходными условиями и числами. "
             "Комментарий преподавателя в поле пожелания имеет приоритет: пропускай исключённые номера и подпункты, "
             "а если он просит похожие задачи, составляй новые того же типа с другими значениями. "
             "Один нумерованный номер со всеми его подпунктами — одна задача; подпункты оформляй с новой строки. "
             "Реши каждый перенесённый или изменённый пример. Не повторяй уже составленные условия. "
             "Не заменяй задачу со скриншота выдуманной без просьбы преподавателя. "
-            "Если подходящие задачи закончились или изображение неразборчиво, верни пустой массив exercises."
+            "Если подходящие задачи закончились или изображение неразборчиво, верни пустой массив exercises. "
+            + common_rules
         )
     context = student_context(student) if student and mode == "generated" else None
     source_text, source_files, source_refs = selected_context(
@@ -393,8 +399,8 @@ def generate_exercises(request):
                          "количество_по_сложности_1_базовая_2_средняя_3_повышенная_4_олимпиадная": counts,
                          "пожелания": wishes, "класс": grade,
                          "количество_скриншотов": len(images),
-                         "количество_задач_из_источника": count if mode == "source" else None,
-                         "порядковый_номер_целого_упражнения_в_подборке": source_index if mode == "source" else None,
+                         "количество_задач_из_источника": count if mode != "generated" else None,
+                         "порядковый_номер_целого_упражнения_в_подборке": source_index if mode != "generated" else None,
                          "номера_или_ориентир_в_источнике": source_hint if mode == "source" else None,
                          "целевой_номер_в_этом_запросе": target_number,
                          "уже_выбранные_номера_упражнений": previous_numbers,
@@ -441,7 +447,7 @@ def generate_exercises(request):
                     raise ValueError("подходящие задачи на скриншотах закончились или неразборчивы")
                 if not isinstance(raw_rows, list) or len(raw_rows) != count:
                     raise ValueError("неверное количество задач")
-                rows = [(number(row.get("difficulty", 2), "Сложность", 1, 4) if mode == "source" and isinstance(row, dict)
+                rows = [(number(row.get("difficulty", 2), "Сложность", 1, 4) if mode != "generated" and isinstance(row, dict)
                          else difficulty if mode == "generated" else 2, row) for row in raw_rows]
             exercises = []
             selected_identities = set(previous_identities)
@@ -458,7 +464,7 @@ def generate_exercises(request):
                 exercise = exercise_fields({**row, "subject": subject, "topic": topic,
                                             "subtopic": subtopic, "difficulty": level,
                                             "grades": [grade]})
-                if mode == "generated" and re.sub(r"\s+", "", exercise["prompt"][:500]).casefold() in {
+                if mode != "source" and re.sub(r"\s+", "", exercise["prompt"][:500]).casefold() in {
                     re.sub(r"\s+", "", previous_prompt).casefold() for previous_prompt in previous
                 }:
                     raise ValueError("повторено уже составленное условие; выбери другую задачу")

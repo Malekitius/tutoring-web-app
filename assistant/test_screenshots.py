@@ -26,7 +26,7 @@ class ScreenshotGenerationTests(TestCase):
         self.student = Student.objects.create(name="Тестовый ученик", grade=7, opening_balance_rub=500)
         self.payment = Payment.objects.create(student=self.student, paid_on="2026-10-30", amount_rub=1500)
         self.payload = {"student_id": str(self.student.id), "subject": "Алгебра", "topic": "Уравнения",
-                        "mode": "generated", "difficulty": 1, "count": 1,
+                        "mode": "screenshots", "count": 1,
                         "wishes": "Не бери № 3; для № 5 создай похожую задачу с другими числами"}
         self.task = {"exercises": [{"title": "Уравнение", "prompt": "Решите $2x=6$.", "answer": "$x=3$."}]}
 
@@ -57,6 +57,9 @@ class ScreenshotGenerationTests(TestCase):
                 self.assertNotIn("private_metadata", image.info)
         self.assertEqual(json.loads(prompt)["пожелания"], self.payload["wishes"])
         self.assertEqual(json.loads(prompt)["количество_скриншотов"], 6)
+        self.assertEqual(json.loads(prompt)["режим"], "screenshots")
+        self.assertEqual(json.loads(prompt)["количество_задач_из_источника"], 1)
+        self.assertNotIn("учебного PDF", instructions)
         self.assertIn("исходными условиями и числами", instructions)
         self.assertIn("Комментарий преподавателя", instructions)
         self.assertFalse(Exercise.objects.exists())
@@ -88,11 +91,37 @@ class ScreenshotGenerationTests(TestCase):
     def test_invalid_uploads_are_rejected_before_calling_provider(self, factory):
         cases = [([self.screenshot() for _ in range(7)], self.payload),
                  ([SimpleUploadedFile("fake.png", b"not an image")], self.payload),
-                 ([self.screenshot()], {**self.payload, "mode": "source"})]
+                 ([self.screenshot()], {**self.payload, "mode": "source"}),
+                 ([self.screenshot()], {**self.payload, "mode": "generated"}),
+                 ([], self.payload),
+                 ([self.screenshot()], {**self.payload, "materials": [{"id": "pdf", "pages": "1"}]})]
         for files, payload in cases:
             with self.subTest(mode=payload["mode"], files=len(files)):
                 self.assertEqual(self.generate(files, payload).status_code, 400)
         factory.assert_not_called()
+
+    @patch("assistant.views.get_provider")
+    def test_transferred_difficulty_is_inferred_and_subparts_stay_together(self, factory):
+        factory.return_value.complete.return_value = json.dumps({"exercises": [{
+            "title": "Номер 12", "prompt": "Решите:\nа) $2x=6$;\nб) $4x=8$.",
+            "answer": "а) $x=3$;\nб) $x=2$.", "difficulty": 3}]})
+        response = self.generate([self.screenshot()])
+        self.assertEqual(response.status_code, 200, response.content)
+        rows = response.json()["exercises"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["difficulty"], 3)
+        self.assertIn("б)", rows[0]["prompt"])
+        instructions = factory.return_value.complete.call_args.args[0]
+        self.assertIn("Один нумерованный номер", instructions)
+
+    @patch("assistant.views.get_provider")
+    def test_plain_generation_does_not_require_or_send_screenshots(self, factory):
+        factory.return_value.complete.return_value = json.dumps(self.task)
+        response = self.client.post("/api/assistant/generate", json.dumps({
+            **self.payload, "mode": "generated", "difficulty": 1}), content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertNotIn("images", factory.return_value.complete.call_args.kwargs)
+        self.assertNotIn("переносишь задачи со скриншотов", factory.return_value.complete.call_args.args[0])
 
     @patch("assistant.views.get_provider")
     def test_empty_image_result_is_reported_without_inventing_a_task(self, factory):
