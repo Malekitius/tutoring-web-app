@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 from django.core import serializers
 from django.core.exceptions import ValidationError
 from django.core.serializers.base import DeserializationError
-from .cabinets import atomic, database_alias, data_directory, media_directory
+from django.db import connections
 from django.db.utils import IntegrityError
 
 from assignments.models import Exercise, ExerciseGrade, Submission, Worksheet, WorksheetItem, TaskFigure
@@ -22,6 +22,8 @@ from materials.models import Material, MaterialPage
 from schedule.models import Lesson, LessonComment, WeeklyRule
 from school.models import SchoolClass, SchoolLesson, SchoolStudent, SchoolWeeklyRule, SchoolWorksheet, SchoolWorksheetItem
 from students.models import Student, Subject, Topic
+
+from .cabinets import atomic, database_alias, data_directory, media_directory
 
 
 ARCHIVE_FORMAT = "tutoring-web-app.backup"
@@ -96,6 +98,24 @@ def _safe_media_name(value):
     if not value or path.is_absolute() or any(part in ("", ".", "..") for part in value.split("/")):
         raise ValueError("Некорректный путь загруженной работы")
     return str(path)
+
+
+def _restart_postgres_ids(alias):
+    connection = connections[alias]
+    if connection.vendor != "postgresql":
+        return
+    # ZIP fixtures contain explicit IDs. RESTART is rolled back with the import.
+    with connection.cursor() as cursor:
+        cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+        for model in MODELS:
+            field = model._meta.auto_field
+            if field is None:
+                continue
+            table = connection.ops.quote_name(model._meta.db_table)
+            column = connection.ops.quote_name(field.column)
+            cursor.execute(f"SELECT COALESCE(MAX({column}), 0) + 1 FROM {table}")
+            next_id = cursor.fetchone()[0]
+            cursor.execute(f"ALTER TABLE {table} ALTER COLUMN {column} RESTART WITH {int(next_id)}")
 
 
 def _write_file(archive, source, name):
@@ -314,12 +334,15 @@ def restore_archive(upload, scope="all"):
                 media_root.rename(old_media)
                 moved_old = True
             with atomic():
+                alias = database_alias()
                 for model in reversed(MODELS):
                     querysets[model].delete()
-                for item in serializers.deserialize("json", json.dumps(records, ensure_ascii=False), using=database_alias()):
+                for item in serializers.deserialize("json", json.dumps(records, ensure_ascii=False), using=alias):
                     if scope != "all" and isinstance(item.object, MaterialPage):
                         item.object.pk = None
-                    item.save(using=database_alias())
+                    item.save(using=alias)
+                if scope == "all":
+                    _restart_postgres_ids(alias)
                 staged_media.rename(media_root)
                 moved_new = True
         except Exception as exc:

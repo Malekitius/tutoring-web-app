@@ -9,6 +9,9 @@ DATA_DIR = Path(os.environ.get("TUTOR_DATA_DIR", BASE_DIR / "data")).expanduser(
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 TUTOR_ACCOUNTS = os.environ.get("TUTOR_ACCOUNTS") == "1"
+TUTOR_POSTGRES_DB = os.environ.get("TUTOR_POSTGRES_DB")
+if TUTOR_POSTGRES_DB and not TUTOR_ACCOUNTS:
+    raise RuntimeError("Для PostgreSQL включите TUTOR_ACCOUNTS=1.")
 
 SECRET_KEY = os.environ.get("TUTOR_SECRET_KEY", "local-development-only-change-before-hosting")
 if TUTOR_ACCOUNTS and (len(SECRET_KEY) < 50 or not os.environ.get("TUTOR_SECRET_KEY")):
@@ -65,6 +68,16 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": DATA_DIR / ("accounts.sqlite3" if TUTOR_ACCOUNTS else "db.sqlite3")}}
+if TUTOR_POSTGRES_DB:
+    DATABASES["default"] = {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": TUTOR_POSTGRES_DB,
+        "HOST": os.environ.get("PGHOST", "127.0.0.1"),
+        "PORT": os.environ.get("PGPORT", ""),
+        "USER": os.environ.get("PGUSER", ""),
+        "PASSWORD": os.environ.get("PGPASSWORD", ""),
+        "OPTIONS": {"options": "-c search_path=public"},
+    }
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LANGUAGE_CODE = "ru-ru"
 TIME_ZONE = "Europe/Moscow"
@@ -84,7 +97,7 @@ LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/login/"
 if TUTOR_ACCOUNTS:
-    SESSION_COOKIE_NAME = "tutor_cabinet_session"
+    SESSION_COOKIE_NAME = "tutor_postgres_session" if TUTOR_POSTGRES_DB else "tutor_cabinet_session"
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
      "OPTIONS": {"min_length": 12}},

@@ -5,7 +5,7 @@ from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.cache import add_never_cache_headers
 
-from .cabinets import cabinet_directory, cabinet_scope
+from .cabinets import cabinet_is_ready, cabinet_scope
 
 
 class CabinetMiddleware:
@@ -25,7 +25,7 @@ class CabinetMiddleware:
                 response = redirect("login")
             else:
                 response = redirect_to_login(request.get_full_path(), reverse("login"))
-        elif not (cabinet_directory(request.user.pk) / "db.sqlite3").is_file():
+        elif not cabinet_is_ready(request.user.pk):
             response = HttpResponse("Личный кабинет ещё не настроен.", status=403)
         else:
             request.cabinet_active = True

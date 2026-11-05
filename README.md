@@ -38,6 +38,30 @@ export TUTOR_SECRET_KEY="$(.venv/bin/python -c 'import secrets; print(secrets.to
 
 Откройте [страницу входа](http://127.0.0.1:8767/login/) и нажмите «Создать аккаунт». Базы кабинетов и их файлы лежат в `cabinet-pilot/cabinets/`, а аккаунты в `cabinet-pilot/accounts.sqlite3`. Для переноса данных выгрузите полный архив через «Данные» в прежней установке, войдите в новый кабинет и восстановите архив там. Восстановление заменяет данные выбранного кабинета. Подключение помощника настраивается заново для каждого кабинета. Команда запуска выше предназначена для локальной проверки.
 
+### Локальный пилот с PostgreSQL
+
+Создайте отдельную пустую базу PostgreSQL и пользователя, который владеет этой базой. Приложение хранит аккаунты в схеме `public` и создаёт отдельную схему для каждого кабинета. PDF, рисунки и резервные копии хранятся в локальной папке `TUTOR_DATA_DIR/postgres-cabinets/`. Для каждой установки задайте свою папку данных.
+
+```bash
+.venv/bin/python -m pip install -r requirements-postgres.txt
+export TUTOR_ACCOUNTS=1
+export TUTOR_POSTGRES_DB=tutor_pilot
+export PGHOST=127.0.0.1 PGPORT=5432 PGUSER=tutor_pilot
+export TUTOR_DATA_DIR="$PWD/data/postgres-pilot"
+export TUTOR_SECRET_KEY="<сохранённый случайный секрет длиной от 50 символов>"
+# Настройте пароль через .pgpass или задайте PGPASSWORD в окружении.
+.venv/bin/python manage.py migrate_cabinets
+.venv/bin/python manage.py runserver 127.0.0.1:8769 --noreload --insecure
+```
+
+Откройте [регистрацию](http://127.0.0.1:8769/register/), создайте аккаунт и восстановите ZIP через «Данные». Для переноса репетиторства, школы и библиотеки возьмите полную копию. Профиль, пароль и подключение помощника настраиваются отдельно. При обновлении пилота остановите сервер и снова выполните `migrate_cabinets`, чтобы обновить все схемы.
+
+Для интеграционного теста задайте `TUTOR_TEST_POSTGRES_DB=postgres` и используйте тестового пользователя PostgreSQL с правом создавать базы. Тест создаёт временную базу, проверяет два кабинета и импорт ZIP из SQLite, затем удаляет эту базу.
+
+```bash
+TUTOR_ACCOUNTS=0 TUTOR_POSTGRES_DB= TUTOR_TEST_POSTGRES_DB=postgres .venv/bin/python manage.py test config.test_cabinets
+```
+
 ## Что работает
 
 - Переключение между режимами «Репетиторство» и «Школа». Существующие ученики, занятия, задания и финансы остаются в репетиторстве.

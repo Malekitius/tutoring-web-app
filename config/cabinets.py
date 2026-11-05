@@ -1,4 +1,4 @@
-"""Request-local database and file storage for the local accounts pilot."""
+"""Request-local database and file storage for teacher accounts."""
 
 import shutil
 from contextlib import contextmanager
@@ -17,19 +17,32 @@ _connections_lock = Lock()
 
 
 def cabinet_directory(user_id):
-    return settings.DATA_DIR / "cabinets" / str(int(user_id))
+    folder = "postgres-cabinets" if settings.TUTOR_POSTGRES_DB else "cabinets"
+    return settings.DATA_DIR / folder / str(int(user_id))
+
+
+def cabinet_is_ready(user_id):
+    directory = cabinet_directory(user_id)
+    if not settings.TUTOR_POSTGRES_DB:
+        return (directory / "db.sqlite3").is_file()
+    if not directory.is_dir():
+        return False
+    with connections[DEFAULT_DB_ALIAS].cursor() as cursor:
+        cursor.execute("SELECT to_regnamespace(%s) IS NOT NULL", [f"cabinet_{int(user_id)}"])
+        return cursor.fetchone()[0]
 
 
 @contextmanager
 def cabinet_scope(user_id):
     directory = cabinet_directory(user_id)
     alias = f"cabinet_{int(user_id)}"
+    default = connections.databases[DEFAULT_DB_ALIAS]
+    if settings.TUTOR_POSTGRES_DB:
+        options = {"OPTIONS": {**default["OPTIONS"], "options": f"-c search_path={alias}"}}
+    else:
+        options = {"NAME": directory / "db.sqlite3"}
     with _connections_lock:
-        connections.databases.setdefault(alias, {
-            **connections.databases[DEFAULT_DB_ALIAS],
-            "NAME": directory / "db.sqlite3",
-            "TEST": {},
-        })
+        connections.databases.setdefault(alias, {**default, **options, "TEST": {}})
     token = _current.set((alias, directory))
     try:
         yield alias
@@ -40,6 +53,7 @@ def cabinet_scope(user_id):
 def provision_cabinet(user):
     """Save a new user only if their private database is ready."""
     created_directory = None
+    created_schema = None
     try:
         with transaction.atomic(using=DEFAULT_DB_ALIAS):
             user.save(force_insert=True, using=DEFAULT_DB_ALIAS)
@@ -47,11 +61,23 @@ def provision_cabinet(user):
             directory.mkdir(mode=0o700, parents=True)
             created_directory = directory
             with cabinet_scope(user.pk) as alias:
+                connection = connections[alias]
                 try:
-                    call_command("migrate", database=alias, interactive=False, verbosity=0)
+                    if settings.TUTOR_POSTGRES_DB:
+                        with transaction.atomic(using=alias):
+                            with connection.cursor() as cursor:
+                                cursor.execute(f"CREATE SCHEMA {connection.ops.quote_name(alias)}")
+                            call_command("migrate", database=alias, interactive=False, verbosity=0)
+                        created_schema = alias
+                    else:
+                        call_command("migrate", database=alias, interactive=False, verbosity=0)
                 finally:
-                    connections[alias].close()
+                    connection.close()
     except Exception:
+        if created_schema is not None:
+            connection = connections[DEFAULT_DB_ALIAS]
+            with connection.cursor() as cursor:
+                cursor.execute(f"DROP SCHEMA {connection.ops.quote_name(created_schema)} CASCADE")
         if created_directory is not None:
             shutil.rmtree(created_directory)
         raise
