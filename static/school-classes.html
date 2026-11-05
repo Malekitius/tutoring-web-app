@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f7f5f0">
   <title>Кабинет преподавателя — классы</title>
-  <link rel="stylesheet" href="/static/app.css?v=7">
+  <link rel="stylesheet" href="/static/app.css?v=9">
   <link rel="stylesheet" href="/static/school.css?v=1">
   <link rel="stylesheet" href="/static/materials.css?v=3">
   <link rel="stylesheet" href="/static/materials-viewer.css?v=2">
@@ -31,10 +31,12 @@
       <div class="sidebar-bottom"><div class="local-badge"><span class="local-dot"></span> Данные на этом компьютере</div><p>Классы и школьные ученики хранятся отдельно от индивидуальных занятий.</p></div>
     </aside>
     <main class="workspace">
-      <header class="topbar"><div><div class="eyebrow">ШКОЛА · УЧЕНИКИ</div><h1>Классы</h1><p class="topbar-subtitle">Состав, предмет и учебные группы каждого класса.</p></div><button id="add-class" class="button button-primary" type="button"><span aria-hidden="true">＋</span> Создать класс</button></header>
+      <header class="topbar"><div><div class="eyebrow">ШКОЛА · УЧЕНИКИ</div><h1>Классы</h1><p class="topbar-subtitle">Состав, предмет и учебные группы каждого класса.</p></div>
+          {% include "account-menu.html" %}
+        </header>
       <div class="content-grid">
         <section class="list-panel" aria-labelledby="class-list-heading">
-          <div class="panel-heading"><div><h2 id="class-list-heading">Мои классы</h2><span id="class-count" class="count-pill">0</span></div></div>
+          <div class="panel-heading panel-heading-actions"><div><h2 id="class-list-heading">Мои классы</h2><span id="class-count" class="count-pill">0</span></div><button id="add-class" class="button button-primary content-add" type="button"><span aria-hidden="true">＋</span> Создать класс</button></div>
           <label class="search-box"><span aria-hidden="true">⌕</span><input id="class-search" type="search" placeholder="Класс или предмет" autocomplete="off" aria-label="Поиск класса"></label>
           <div id="class-list" class="student-list" aria-live="polite"></div>
         </section>

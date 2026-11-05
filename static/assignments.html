@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f7f5f0">
     <title>Кабинет репетитора — задания</title>
-    <link rel="stylesheet" href="/static/app.css?v=7">
+    <link rel="stylesheet" href="/static/app.css?v=9">
     <link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
     <link rel="stylesheet" href="/static/assignments.css?v=7">
     <link rel="stylesheet" href="/static/assistant.css?v=11">
@@ -40,7 +40,7 @@
       <main class="workspace assignments-workspace">
         <header class="topbar">
           <div><div class="eyebrow">УЧЕБНЫЕ МАТЕРИАЛЫ</div><h1>Задания</h1><p class="topbar-subtitle">Подборки на урок, домашние работы и библиотека задач.</p></div>
-          <button id="new-main" class="button button-primary" type="button">＋ Новая подборка</button>
+          {% include "account-menu.html" %}
         </header>
         <div class="assign-tabs" role="tablist" aria-label="Тип заданий">
           <button class="assign-tab active" type="button" data-tab="lesson" role="tab" aria-selected="true">На уроке <span id="lesson-count">0</span></button>
@@ -51,6 +51,7 @@
         <div id="library-actions" class="library-actions" hidden><span>Переносимая библиотека задач с рисунками · формат v3</span><a class="button button-soft" href="/api/assignments/library/export">↓ Выгрузить ZIP</a><button id="import-open" class="button button-secondary" type="button">↑ Загрузить библиотеку</button></div>
         <div id="assign-layout" class="assign-layout">
           <section class="assign-list-panel" aria-label="Список заданий">
+            <div class="list-create"><button id="new-main" class="button button-primary content-add" type="button">＋ Новая подборка</button></div>
             <div id="worksheet-filters" class="assign-filter"><label><span>Ученик</span><select id="filter-student"><option value="">Все ученики</option></select></label><label><span>Поиск</span><input id="filter-query" type="search" placeholder="Название или тема"></label></div>
             <div id="library-filters" class="assign-filter library-filters" hidden>
               <div class="multi-filter"><span>Предмет</span><details id="library-subject"><summary>Все предметы</summary><div class="multi-filter-options"></div></details></div>

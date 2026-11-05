@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f7f5f0">
     <title>Кабинет репетитора — ученики</title>
-    <link rel="stylesheet" href="/static/app.css?v=7">
+    <link rel="stylesheet" href="/static/app.css?v=9">
     <link rel="stylesheet" href="/static/materials.css?v=3">
     <link rel="stylesheet" href="/static/materials-viewer.css?v=2">
     <link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
@@ -47,13 +47,14 @@
             <h1>Ученики</h1>
             <p class="topbar-subtitle">Цели, предметы и динамика каждого ученика в одном месте.</p>
           </div>
-          <button id="add-student" class="button button-primary" type="button"><span aria-hidden="true">＋</span> Добавить ученика</button>
+          {% include "account-menu.html" %}
         </header>
 
         <div class="content-grid">
           <section class="list-panel" aria-labelledby="list-heading">
-            <div class="panel-heading">
+            <div class="panel-heading panel-heading-actions">
               <div><h2 id="list-heading">Мои ученики</h2><span id="student-count" class="count-pill">0</span></div>
+              <button id="add-student" class="button button-primary content-add" type="button"><span aria-hidden="true">＋</span> Добавить ученика</button>
             </div>
             <label class="search-box">
               <span aria-hidden="true">⌕</span>

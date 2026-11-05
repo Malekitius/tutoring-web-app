@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f7f5f0">
     <title>Кабинет репетитора — финансы</title>
-    <link rel="stylesheet" href="/static/app.css?v=7">
+    <link rel="stylesheet" href="/static/app.css?v=9">
     <link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
     <link rel="stylesheet" href="/static/finances.css?v=2">
     <link rel="stylesheet" href="/static/assistant-widget.css?v=4">
@@ -35,7 +35,7 @@
       <main class="workspace finance-workspace">
         <header class="topbar">
           <div><div class="eyebrow">ДЕНЕЖНЫЙ УЧЁТ</div><h1>Финансы</h1><p class="topbar-subtitle">Поступления, проведённые занятия и остатки учеников.</p></div>
-          <button id="add-payment" class="button button-primary" type="button"><span aria-hidden="true">＋</span> Добавить внесение</button>
+          {% include "account-menu.html" %}
         </header>
 
         <section class="finance-period" aria-label="Период отчёта">
@@ -57,7 +57,7 @@
 
         <section class="finance-section" aria-labelledby="balances-title"><div class="finance-section-head"><div><div class="eyebrow">АВАНСЫ И ДОЛГИ</div><h2 id="balances-title">Остатки учеников</h2></div><p>Баланс = начальный остаток + внесения − проведённые занятия</p></div><div id="student-balances" class="balance-grid" aria-live="polite"></div></section>
 
-        <section class="finance-section" aria-labelledby="payments-title"><div class="finance-section-head"><div><div class="eyebrow">ИСТОРИЯ ПОСТУПЛЕНИЙ</div><h2 id="payments-title">Внесения за период</h2></div><span id="payments-count" class="count-pill">0</span></div><div id="payment-list" class="payment-list" aria-live="polite"></div></section>
+        <section class="finance-section" aria-labelledby="payments-title"><div class="finance-section-head"><div><div class="eyebrow">ИСТОРИЯ ПОСТУПЛЕНИЙ</div><h2 id="payments-title">Внесения за период</h2></div><div class="content-actions"><span id="payments-count" class="count-pill">0</span><button id="add-payment" class="button button-primary content-add" type="button"><span aria-hidden="true">＋</span> Добавить внесение</button></div></div><div id="payment-list" class="payment-list" aria-live="polite"></div></section>
       </main>
     </div>
 

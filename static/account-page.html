@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% endblock %} · Кабинет преподавателя</title>
+  <link rel="stylesheet" href="/static/app.css?v=11">
+  <link rel="stylesheet" href="/static/assistant-widget.css?v=4">
+  <link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
+  <script src="/static/vendor/katex/katex.min.js" defer></script>
+  <script src="/static/vendor/katex/auto-render.min.js" defer></script>
+  <script src="/static/assistant-widget.js?v=6" defer></script>
+</head>
+<body>
+  <main class="workspace profile-workspace">
+    <header class="topbar">
+      <div class="account-page-heading">
+        <a class="icon-button account-back" href="{% block back_url %}{% url 'index' %}{% endblock %}"
+           aria-label="{% block back_label %}Вернуться в кабинет{% endblock %}">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5m7 7-7-7 7-7"/></svg>
+        </a>
+        <div>
+          <div class="eyebrow">ЛИЧНЫЙ КАБИНЕТ</div>
+          {% block heading %}{% endblock %}
+        </div>
+      </div>
+      {% include "account-menu.html" %}
+    </header>
+    {% block content %}{% endblock %}
+  </main>
+  {% include "assistant-widget.html" %}
+</body>
+</html>

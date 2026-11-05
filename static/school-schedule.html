@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f7f5f0"><title>Кабинет преподавателя — расписание школы</title>
-  <link rel="stylesheet" href="/static/app.css?v=7"><link rel="stylesheet" href="/static/schedule.css?v=8"><link rel="stylesheet" href="/static/school.css?v=1"><link rel="stylesheet" href="/static/vendor/katex/katex.min.css"><link rel="stylesheet" href="/static/assistant-widget.css?v=4">
+  <link rel="stylesheet" href="/static/app.css?v=9"><link rel="stylesheet" href="/static/schedule.css?v=8"><link rel="stylesheet" href="/static/school.css?v=1"><link rel="stylesheet" href="/static/vendor/katex/katex.min.css"><link rel="stylesheet" href="/static/assistant-widget.css?v=4">
   <link rel="stylesheet" href="/static/dialogs.css?v=3">
     <script src="/static/dialogs.js?v=2" defer></script>
     <script src="/static/vendor/katex/katex.min.js" defer></script><script src="/static/vendor/katex/auto-render.min.js" defer></script><script src="/static/school-schedule.js?v=2" defer></script><script src="/static/assistant-widget.js?v=6" defer></script>
@@ -18,8 +18,10 @@
       <div class="sidebar-bottom"><div class="local-badge"><span class="local-dot"></span> Данные на этом компьютере</div><p>Школьные уроки и индивидуальные занятия проверяются на пересечения.</p></div>
     </aside>
     <main class="workspace schedule-workspace">
-      <header class="topbar"><div><div class="eyebrow">ШКОЛА · УЧЕБНЫЙ ПРОЦЕСС</div><h1>Расписание классов</h1><p class="topbar-subtitle">Уроки недели с 09:00 до 22:00.</p></div><button id="add-school-lesson" class="button button-primary" type="button"><span aria-hidden="true">＋</span> Добавить урок</button></header>
-      <section class="schedule-toolbar" aria-label="Навигация по календарю"><div class="week-navigation"><button id="prev-week" class="icon-button" type="button" aria-label="Предыдущая неделя">‹</button><button id="today-week" class="button button-soft" type="button">Сегодня</button><button id="next-week" class="icon-button" type="button" aria-label="Следующая неделя">›</button><h2 id="week-label"></h2></div><div class="schedule-summary"><select id="school-class-filter" class="school-calendar-filter" aria-label="Фильтр по классу"><option value="">Все классы</option></select><span id="lesson-total">0 уроков</span><span class="summary-divider"></span><span id="hours-total">0 часов</span></div></section>
+      <header class="topbar"><div><div class="eyebrow">ШКОЛА · УЧЕБНЫЙ ПРОЦЕСС</div><h1>Расписание классов</h1><p class="topbar-subtitle">Уроки недели с 09:00 до 22:00.</p></div>
+          {% include "account-menu.html" %}
+        </header>
+      <section class="schedule-toolbar" aria-label="Навигация по календарю"><div class="week-navigation"><button id="prev-week" class="icon-button" type="button" aria-label="Предыдущая неделя">‹</button><button id="today-week" class="button button-soft" type="button">Сегодня</button><button id="next-week" class="icon-button" type="button" aria-label="Следующая неделя">›</button><h2 id="week-label"></h2></div><div class="content-actions"><div class="schedule-summary"><select id="school-class-filter" class="school-calendar-filter" aria-label="Фильтр по классу"><option value="">Все классы</option></select><span id="lesson-total">0 уроков</span><span class="summary-divider"></span><span id="hours-total">0 часов</span></div><button id="add-school-lesson" class="button button-primary content-add" type="button"><span aria-hidden="true">＋</span> Добавить урок</button></div></section>
       <section class="calendar-panel" aria-label="Школьное расписание"><div id="school-calendar" class="calendar-grid" aria-live="polite"></div></section>
       <p class="schedule-hint">Нажмите на свободное время для нового урока. Перетащите урок для переноса или откройте карточку для изменения статуса, темы и серии.</p>
     </main>

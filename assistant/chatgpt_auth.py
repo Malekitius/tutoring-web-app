@@ -23,6 +23,8 @@ import jwt
 from django.conf import settings
 from filelock import FileLock, Timeout as FileLockTimeout
 
+from config.cabinets import data_directory
+
 from .https import verified_context
 from .providers import ProviderError
 
@@ -39,6 +41,11 @@ UNUSABLE_REFRESH_CODES = {
 TOKEN_FIELDS = ("access_token", "refresh_token", "id_token", "expires_at", "scopes", "model", "reasoning_effort")
 EFFORT_LABELS = {"auto": "Авто", "low": "Низкий", "medium": "Средний", "high": "Высокий",
                  "xhigh": "Очень высокий", "max": "Максимальный"}
+
+
+def auth_path():
+    directory = data_directory()
+    return AUTH_PATH if directory == settings.DATA_DIR else directory / "assistant_auth.json"
 
 
 def supported_efforts(model: str) -> list[str]:
@@ -59,10 +66,10 @@ class OAuthTokenError(ProviderError):
 @contextmanager
 def auth_lock():
     """Serialize rotating refresh tokens across threads and local server processes."""
-    AUTH_PATH.parent.mkdir(parents=True, exist_ok=True)
+    auth_path().parent.mkdir(parents=True, exist_ok=True)
     with LOCK:
         try:
-            with FileLock(str(AUTH_PATH) + ".lock", timeout=60):
+            with FileLock(str(auth_path()) + ".lock", timeout=60):
                 yield
         except FileLockTimeout as exc:
             raise ProviderError("Подключение ChatGPT занято другим процессом. Повторите запрос.") from exc
@@ -75,19 +82,19 @@ def clear_tokens(record: dict) -> None:
 
 def _read() -> dict:
     try:
-        return json.loads(AUTH_PATH.read_text(encoding="utf-8"))
+        return json.loads(auth_path().read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {}
 
 
 def _write(record: dict) -> None:
-    AUTH_PATH.parent.mkdir(exist_ok=True)
-    handle, temp_path = tempfile.mkstemp(prefix="assistant_auth_", dir=AUTH_PATH.parent)
+    auth_path().parent.mkdir(exist_ok=True)
+    handle, temp_path = tempfile.mkstemp(prefix="assistant_auth_", dir=auth_path().parent)
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as file:
             json.dump(record, file)
-        os.replace(temp_path, AUTH_PATH)
-        os.chmod(AUTH_PATH, 0o600)
+        os.replace(temp_path, auth_path())
+        os.chmod(auth_path(), 0o600)
     finally:
         if os.path.exists(temp_path):
             os.unlink(temp_path)

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f7f5f0">
     <title>Кабинет преподавателя — данные</title>
-    <link rel="stylesheet" href="/static/app.css?v=7">
+    <link rel="stylesheet" href="/static/app.css?v=9">
     <link rel="stylesheet" href="/static/data.css?v=2">
     <link rel="stylesheet" href="/static/assistant-widget.css?v=4">
     <link rel="stylesheet" href="/static/dialogs.css?v=3">
@@ -36,7 +36,9 @@
         <div class="sidebar-bottom"><div class="local-badge"><span class="local-dot"></span> Данные на этом компьютере</div><p>Резервные копии сохраняются в файл, который вы выбираете сами.</p></div>
       </aside>
       <main class="workspace data-workspace">
-        <header class="topbar"><div><div class="eyebrow">СОХРАННОСТЬ ДАННЫХ</div><h1>Данные</h1><p class="topbar-subtitle">Переносите школу и репетиторство независимо друг от друга.</p></div></header>
+        <header class="topbar"><div><div class="eyebrow">СОХРАННОСТЬ ДАННЫХ</div><h1>Данные</h1><p class="topbar-subtitle">Переносите школу и репетиторство независимо друг от друга.</p></div>
+          {% include "account-menu.html" %}
+        </header>
         <div class="data-grid">
           <section class="data-card"><span class="data-card-icon" aria-hidden="true">◈</span><h2>Репетиторство</h2><p>Ученики, предметы и темы, расписание, заметки, финансы, подборки, работы и прикреплённые материалы.</p><div class="data-card-actions"><a class="button button-primary" href="/api/data/backup/export?scope=tutoring">↓ Скачать архив</a><button class="button button-secondary" data-restore-scope="tutoring" type="button">↑ Загрузить архив</button></div><small>Загрузка заменит только данные репетиторства.</small></section>
           <section class="data-card"><span class="data-card-icon" aria-hidden="true">▣</span><h2>Школа</h2><p>Классы и ученики, учебные группы, школьное расписание, подборки, рисунки и прикреплённые материалы.</p><div class="data-card-actions"><a class="button button-primary" href="/api/data/backup/export?scope=school">↓ Скачать архив</a><button class="button button-secondary" data-restore-scope="school" type="button">↑ Загрузить архив</button></div><small>Загрузка заменит только данные школы.</small></section>

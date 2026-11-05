@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% endblock %} · Кабинет преподавателя</title>
+  <link rel="stylesheet" href="/static/app.css?v=11">
+</head>
+<body>
+  <main style="max-width:440px;margin:10vh auto;padding:24px">
+    <div class="eyebrow">КАБИНЕТ ПРЕПОДАВАТЕЛЯ</div>
+    <h1>{% block heading %}{% endblock %}</h1>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -10,11 +10,10 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
-from django.conf import settings
 from django.core import serializers
 from django.core.exceptions import ValidationError
 from django.core.serializers.base import DeserializationError
-from django.db import transaction
+from .cabinets import atomic, database_alias, data_directory, media_directory
 from django.db.utils import IntegrityError
 
 from assignments.models import Exercise, ExerciseGrade, Submission, Worksheet, WorksheetItem, TaskFigure
@@ -114,7 +113,7 @@ def create_archive(scope="all"):
     """Return a seekable temporary ZIP; the caller owns and closes it."""
     output = tempfile.SpooledTemporaryFile(max_size=16 * 1024 * 1024)
     try:
-        with transaction.atomic():
+        with atomic():
             querysets = scope_querysets(scope)
             records = []
             counts = {}
@@ -130,7 +129,7 @@ def create_archive(scope="all"):
                 with archive.open("records.json", "w") as target:
                     target.write(records_bytes)
                 files["records.json"] = {"sha256": hashlib.sha256(records_bytes).hexdigest(), "size": len(records_bytes)}
-                media_root = Path(settings.MEDIA_ROOT).resolve()
+                media_root = Path(media_directory()).resolve()
                 for name in upload_names:
                     source_path = (media_root / name).resolve()
                     if not source_path.is_relative_to(media_root) or not source_path.is_file():
@@ -247,7 +246,7 @@ def inspect_archive(upload, media_stage=None, scope="all"):
                     elif (field.related_model._meta.label_lower, str(related_id)) not in ids:
                         raise ValueError("В архиве есть ссылка на отсутствующую запись")
             try:
-                for _ in serializers.deserialize("json", records_bytes.decode("utf-8")):
+                for _ in serializers.deserialize("json", records_bytes.decode("utf-8"), using=database_alias()):
                     pass
             except (DeserializationError, ValidationError, ValueError, TypeError) as exc:
                 raise ValueError("Некорректные записи в резервной копии") from exc
@@ -267,8 +266,8 @@ def inspect_archive(upload, media_stage=None, scope="all"):
 
 def restore_archive(upload, scope="all"):
     """Replace the selected workspace and retain its previous recovery copy."""
-    data_root = Path(settings.DATA_DIR)
-    media_root = Path(settings.MEDIA_ROOT)
+    data_root = Path(data_directory())
+    media_root = Path(media_directory())
     with tempfile.TemporaryDirectory(prefix="restore-", dir=data_root) as staging:
         staged_media = Path(staging) / "uploads"
         staged_media.mkdir()
@@ -314,13 +313,13 @@ def restore_archive(upload, scope="all"):
             if media_root.exists():
                 media_root.rename(old_media)
                 moved_old = True
-            with transaction.atomic():
+            with atomic():
                 for model in reversed(MODELS):
                     querysets[model].delete()
-                for item in serializers.deserialize("json", json.dumps(records, ensure_ascii=False)):
+                for item in serializers.deserialize("json", json.dumps(records, ensure_ascii=False), using=database_alias()):
                     if scope != "all" and isinstance(item.object, MaterialPage):
                         item.object.pk = None
-                    item.save()
+                    item.save(using=database_alias())
                 staged_media.rename(media_root)
                 moved_new = True
         except Exception as exc:

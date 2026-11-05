@@ -1,0 +1,27 @@
+{% extends "account-page.html" %}
+{% block title %}Настройки{% endblock %}
+{% block heading %}
+<h1>Настройки</h1>
+<p class="topbar-subtitle">Стартовый раздел и безопасность аккаунта.</p>
+{% endblock %}
+{% block content %}
+{% for message in messages %}<p class="profile-saved" role="status">{{ message }}</p>{% endfor %}
+<section class="profile-card" aria-labelledby="start-mode-heading">
+  <h2 id="start-mode-heading">Стартовый раздел</h2>
+  <form method="post" class="profile-form">
+    {% csrf_token %}
+    <label class="field" for="{{ form.start_mode.id_for_label }}">
+      <span>{{ form.start_mode.label }}</span>
+      {{ form.start_mode }}
+    </label>
+    {{ form.start_mode.errors }}
+    <div class="profile-actions">
+      <button class="button button-primary" type="submit">Сохранить</button>
+    </div>
+  </form>
+</section>
+<section class="profile-card" aria-labelledby="security-heading">
+  <h2 id="security-heading">Безопасность</h2>
+  <a class="button button-secondary" href="{% url 'cabinet_password' %}">Сменить пароль</a>
+</section>
+{% endblock %}

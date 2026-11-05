@@ -1,6 +1,8 @@
 import uuid
 
 from django.db import models, transaction
+
+from config.cabinets import database_alias
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 
@@ -105,7 +107,7 @@ def cleanup_task_figure_file(sender, instance, **kwargs):
     def remove_unreferenced():
         if not TaskFigure.objects.filter(file=name).exists():
             storage.delete(name)
-    transaction.on_commit(remove_unreferenced)
+    transaction.on_commit(remove_unreferenced, using=database_alias())
 
 
 

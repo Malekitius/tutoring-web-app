@@ -9,7 +9,7 @@ from datetime import date
 
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
-from django.db import transaction
+from config.cabinets import atomic
 from django.db.models import Q
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
@@ -221,7 +221,7 @@ def exercises_collection(request):
     if request.method == "POST":
         fields = exercise_fields(body(request))
         grades = fields.pop("grades")
-        with transaction.atomic():
+        with atomic():
             item = Exercise.objects.create(**fields)
             ExerciseGrade.objects.bulk_create(ExerciseGrade(exercise=item, grade=grade) for grade in grades)
         return JsonResponse(serialize_exercise(item), status=201)
@@ -353,7 +353,7 @@ def parse_library_upload(file):
 
 
 @api_errors
-@transaction.atomic
+@atomic
 def library_import(request):
     if request.method != "POST":
         return fail("Метод не поддерживается", 405)
@@ -418,7 +418,7 @@ def exercise_detail(request, exercise_id):
     if request.method == "PUT":
         fields = exercise_fields(body(request))
         grades = fields.pop("grades")
-        with transaction.atomic():
+        with atomic():
             for key, value in fields.items():
                 setattr(item, key, value)
             item.save()
@@ -443,7 +443,7 @@ def worksheets_collection(request):
 
 
 @api_errors
-@transaction.atomic
+@atomic
 def worksheet_detail(request, worksheet_id):
     item = find(Worksheet, worksheet_id, "Подборка")
     if request.method == "GET":
@@ -515,7 +515,7 @@ def worksheet_items(request, worksheet_id):
 
 
 @api_errors
-@transaction.atomic
+@atomic
 def worksheet_items_batch(request, worksheet_id):
     if request.method != "POST":
         return fail("Метод не поддерживается", 405)

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f7f5f0">
     <title>Кабинет репетитора — расписание</title>
-    <link rel="stylesheet" href="/static/app.css?v=7">
+    <link rel="stylesheet" href="/static/app.css?v=9">
     <link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
     <link rel="stylesheet" href="/static/assistant-widget.css?v=4">
     <link rel="stylesheet" href="/static/schedule.css?v=8">
@@ -35,12 +35,12 @@
       <main class="workspace schedule-workspace">
         <header class="topbar">
           <div><div class="eyebrow">УЧЁБНЫЙ ПРОЦЕСС</div><h1>Расписание</h1><p class="topbar-subtitle">Все занятия недели — перед глазами.</p></div>
-          <button id="add-lesson" class="button button-primary" type="button"><span aria-hidden="true">＋</span> Добавить занятие</button>
+          {% include "account-menu.html" %}
         </header>
 
         <section class="schedule-toolbar" aria-label="Навигация по календарю">
           <div class="week-navigation"><button id="prev-week" class="icon-button" type="button" aria-label="Предыдущая неделя">‹</button><button id="today-week" class="button button-soft" type="button">Сегодня</button><button id="next-week" class="icon-button" type="button" aria-label="Следующая неделя">›</button><h2 id="week-label"></h2></div>
-          <div class="schedule-summary"><span id="lesson-total">0 занятий</span><span class="summary-divider"></span><span id="hours-total">0 часов</span></div>
+          <div class="content-actions"><div class="schedule-summary"><span id="lesson-total">0 занятий</span><span class="summary-divider"></span><span id="hours-total">0 часов</span></div><button id="add-lesson" class="button button-primary content-add" type="button"><span aria-hidden="true">＋</span> Добавить занятие</button></div>
         </section>
 
         <section class="calendar-panel" aria-label="Недельное расписание">

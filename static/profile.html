@@ -1,0 +1,27 @@
+{% extends "account-page.html" %}
+{% block title %}Мой профиль{% endblock %}
+{% block heading %}
+<h1>Мой профиль</h1>
+<p class="topbar-subtitle">Как ваше имя отображается в кабинете.</p>
+{% endblock %}
+{% block content %}
+    <section class="profile-card" aria-label="Данные профиля">
+      {% if saved %}<p class="profile-saved" role="status">Имя сохранено.</p>{% endif %}
+      <dl class="profile-login">
+        <dt>Логин</dt>
+        <dd>{{ user.get_username }}</dd>
+      </dl>
+      <form method="post" class="profile-form">
+        {% csrf_token %}
+        <label class="field" for="{{ form.display_name.id_for_label }}">
+          <span>{{ form.display_name.label }}</span>
+          {{ form.display_name }}
+        </label>
+        {{ form.display_name.errors }}
+        <p class="topbar-subtitle">Если оставить поле пустым, в меню будет показан логин.</p>
+        <div class="profile-actions">
+          <button class="button button-primary" type="submit">Сохранить</button>
+        </div>
+      </form>
+    </section>
+{% endblock %}

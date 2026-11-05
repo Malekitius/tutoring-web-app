@@ -2,7 +2,7 @@
 
 from datetime import date, timedelta
 
-from django.db import transaction
+from config.cabinets import atomic
 from django.db.models import Q
 
 from .models import Lesson, WeeklyRule
@@ -114,7 +114,7 @@ def check_one_off_future_collisions(weekday, time_value, duration, start_date, e
             )
 
 
-@transaction.atomic
+@atomic
 def change_series(rule, from_date, *, student, subject, weekday, time_value, duration):
     if from_date < rule.start_date or (rule.end_date and from_date > rule.end_date):
         raise ValueError("Дата изменения не входит в эту серию")
@@ -149,7 +149,7 @@ def change_series(rule, from_date, *, student, subject, weekday, time_value, dur
     )
 
 
-@transaction.atomic
+@atomic
 def end_series(rule, from_date):
     if from_date < rule.start_date or (rule.end_date and from_date > rule.end_date):
         raise ValueError("Дата завершения не входит в эту серию")

@@ -1,0 +1,21 @@
+{% if request.cabinet_active %}
+<details class="account-menu">
+  <summary class="account-avatar" aria-label="Меню аккаунта {{ user.get_username }}" title="Меню аккаунта">
+    <span aria-hidden="true">{{ request.cabinet_initials }}</span>
+  </summary>
+  <div class="account-menu-panel">
+    <div class="account-menu-identity">
+      <strong>{{ user.first_name|default:user.username }}</strong>
+      {% if user.first_name %}<small>{{ user.get_username }}</small>{% endif %}
+    </div>
+    <a class="account-menu-item" href="{% url 'profile' %}"{% if request.resolver_match.url_name == "profile" %} aria-current="page"{% endif %}>Мой профиль</a>
+    <a class="account-menu-item" href="{% url 'cabinet_settings' %}"{% if request.resolver_match.url_name == "cabinet_settings" %} aria-current="page"{% endif %}>Настройки</a>
+    <button class="account-menu-item" type="button" data-open-assistant>Подключение помощника</button>
+    <form class="account-menu-logout" method="post" action="{% url 'logout' %}">
+      {% csrf_token %}
+      <button class="account-menu-item" type="submit">Выйти</button>
+    </form>
+  </div>
+</details>
+<script src="/static/account-menu.js" defer></script>
+{% endif %}

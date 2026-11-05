@@ -5,7 +5,7 @@ import re
 import uuid
 from urllib.parse import urlencode
 
-from django.db import transaction
+from config.cabinets import atomic
 from django.http import JsonResponse
 from django.shortcuts import redirect
 
@@ -22,7 +22,7 @@ from .finance import answer as finance_answer, is_finance_question, period_for, 
 from .providers import ChatGPTPlanProvider, ProviderError, get_provider
 from . import chatgpt_auth
 
-RETURN_PAGES = {"/", "/schedule/", "/assignments/", "/finances/", "/school/", "/school/schedule/", "/school/assignments/"}
+RETURN_PAGES = {"/settings/", "/settings/password/", "/profile/", "/", "/schedule/", "/assignments/", "/finances/", "/school/", "/school/schedule/", "/school/assignments/"}
 
 
 def student_or_error(student_id):
@@ -514,7 +514,7 @@ def crop_screenshot_figure(request):
 
 
 @api_errors
-@transaction.atomic
+@atomic
 def accept_exercises(request):
     """Only an explicit teacher request saves drafts; this endpoint cannot touch money."""
     if request.method != "POST":

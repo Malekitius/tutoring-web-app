@@ -2,7 +2,7 @@
 
 from datetime import date, datetime, timedelta
 
-from django.db import transaction
+from config.cabinets import atomic
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
 from django.shortcuts import render
@@ -129,7 +129,7 @@ def week_view(request):
 
 
 @api_errors
-@transaction.atomic
+@atomic
 def lessons_collection(request):
     if request.method != "POST":
         return fail("Метод не поддерживается", 405)
@@ -157,7 +157,7 @@ def lessons_collection(request):
 
 
 @api_errors
-@transaction.atomic
+@atomic
 def lesson_detail(request, lesson_id):
     lesson = find(Lesson, lesson_id)
     if request.method == "PATCH":
@@ -206,7 +206,7 @@ def lesson_detail(request, lesson_id):
 
 
 @api_errors
-@transaction.atomic
+@atomic
 def lesson_comments(request, lesson_id):
     if request.method != "POST":
         return fail("Метод не поддерживается", 405)

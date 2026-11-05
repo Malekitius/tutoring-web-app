@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 
 from django.core.files.base import ContentFile
-from django.db import transaction
+from config.cabinets import atomic
 from django.http import FileResponse, JsonResponse
 from django.http import HttpResponse
 from django.views.decorators.clickjacking import xframe_options_sameorigin
@@ -103,7 +103,7 @@ def collection(request):
         if kind not in KINDS:
             raise ValueError("Выберите тип материала")
         filename, data, pages = validate_pdf(request.FILES.get("file"))
-        with transaction.atomic():
+        with atomic():
             item = Material(**{field: owner}, title=title, kind=kind,
                             original_name=filename, page_count=len(pages),
                             text_page_count=sum(bool(value) for _, value in pages))

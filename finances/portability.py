@@ -5,7 +5,7 @@ import re
 import uuid
 from datetime import date, datetime, timezone
 
-from django.db import transaction
+from config.cabinets import atomic
 
 from schedule.models import Lesson
 from students.models import Student
@@ -19,7 +19,7 @@ MAX_FINANCE_FILE = 20 * 1024 * 1024
 
 
 def export_document():
-    with transaction.atomic():
+    with atomic():
         students = [{
             "id": str(item.id), "name": item.name,
             "price_rub": item.price_rub, "opening_balance_rub": item.opening_balance_rub,
@@ -149,7 +149,7 @@ def preview_document(document):
     }
 
 
-@transaction.atomic
+@atomic
 def import_document(document):
     preview = preview_document(document)
     if not preview["can_import"]:

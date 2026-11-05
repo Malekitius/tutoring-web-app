@@ -4,7 +4,9 @@ from datetime import date, timedelta
 from functools import wraps
 
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
+
+from config.cabinets import atomic
 from django.db.models import Count
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
@@ -114,7 +116,7 @@ def serialize_class(item, detailed=False):
 
 
 @api_errors
-@transaction.atomic
+@atomic
 def classes_collection(request):
     if request.method == "GET":
         items = SchoolClass.objects.annotate(student_count=Count("students")).order_by("name", "subject")
@@ -126,7 +128,7 @@ def classes_collection(request):
 
 
 @api_errors
-@transaction.atomic
+@atomic
 def class_detail(request, class_id):
     item = find(SchoolClass, class_id, "Класс")
     if request.method == "GET":
@@ -218,7 +220,7 @@ def week_view(request):
 
 
 @api_errors
-@transaction.atomic
+@atomic
 def lessons_collection(request):
     if request.method != "POST":
         return fail("Метод не поддерживается", 405)
@@ -246,7 +248,7 @@ def lessons_collection(request):
 
 
 @api_errors
-@transaction.atomic
+@atomic
 def lesson_detail(request, lesson_id):
     lesson = find(SchoolLesson, lesson_id, "Урок")
     if request.method == "PATCH":
@@ -282,7 +284,7 @@ def lesson_detail(request, lesson_id):
 
 
 @api_errors
-@transaction.atomic
+@atomic
 def rule_detail(request, rule_id):
     rule = find(SchoolWeeklyRule, rule_id, "Серия")
     data = body(request)

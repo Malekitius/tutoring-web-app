@@ -1,0 +1,14 @@
+{% extends "sign-in-page.html" %}
+{% block title %}Вход{% endblock %}
+{% block heading %}Вход в личный кабинет{% endblock %}
+{% block content %}
+    <form method="post" style="display:grid;gap:16px">
+      {% csrf_token %}
+      {{ form.non_field_errors }}
+      <label class="field" for="{{ form.username.id_for_label }}"><span>Имя пользователя</span>{{ form.username }}</label>
+      <label class="field" for="{{ form.password.id_for_label }}"><span>Пароль</span>{{ form.password }}</label>
+      <input type="hidden" name="next" value="{{ next }}">
+      <button class="button button-primary" type="submit">Войти</button>
+    </form>
+    <p style="margin-top:18px"><a class="text-button" href="{% url 'register' %}">Создать аккаунт</a></p>
+{% endblock %}

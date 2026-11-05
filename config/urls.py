@@ -1,3 +1,5 @@
+from django.conf import settings
+from django.contrib.auth.views import LogoutView
 from django.contrib import admin
 from django.urls import include, path
 
@@ -28,5 +30,18 @@ urlpatterns = [
     path("api/school/", include("school.urls")),
     path("api/materials/", include("materials.urls")),
     path("api/", include("students.urls")),
-    path("admin/", admin.site.urls),
 ]
+
+if settings.TUTOR_ACCOUNTS:
+    from . import profile_views
+
+    urlpatterns += [
+        path("login/", profile_views.CabinetLoginView.as_view(), name="login"),
+        path("register/", profile_views.register, name="register"),
+        path("logout/", LogoutView.as_view(), name="logout"),
+        path("profile/", profile_views.profile, name="profile"),
+        path("settings/", profile_views.cabinet_settings, name="cabinet_settings"),
+        path("settings/password/", profile_views.CabinetPasswordChangeView.as_view(), name="cabinet_password"),
+    ]
+else:
+    urlpatterns.append(path("admin/", admin.site.urls))
