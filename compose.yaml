@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_DB: tutor
+      POSTGRES_PASSWORD: ${TUTOR_DEPLOY_POSTGRES_PASSWORD:?Run python3 deploy/local.py up}
+      TUTOR_DB_PASSWORD: ${TUTOR_DEPLOY_DB_PASSWORD:?Run python3 deploy/local.py up}
+    volumes:
+      - database:/var/lib/postgresql/data
+      - ./deploy/init-db.sql:/docker-entrypoint-initdb.d/01-tutor.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "PGPASSWORD=\"$$TUTOR_DB_PASSWORD\" psql -h 127.0.0.1 -U tutor -d tutor -Atqc 'SELECT 1'"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  web:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      TUTOR_ACCOUNTS: "1"
+      TUTOR_POSTGRES_DB: tutor
+      TUTOR_SECRET_KEY: ${TUTOR_DEPLOY_SECRET_KEY:?Run python3 deploy/local.py up}
+      TUTOR_DATA_DIR: /var/lib/tutor
+      PGHOST: db
+      PGUSER: tutor
+      PGPASSWORD: ${TUTOR_DEPLOY_DB_PASSWORD:?Run python3 deploy/local.py up}
+    ports:
+      - "127.0.0.1:${TUTOR_DEPLOY_PORT:-8769}:8000"
+    volumes:
+      - files:/var/lib/tutor
+    stop_grace_period: 45s
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/login/', timeout=3).close()"]
+      interval: 3s
+      timeout: 4s
+      retries: 30
+
+volumes:
+  database:
+  files:

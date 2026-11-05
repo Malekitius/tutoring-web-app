@@ -281,7 +281,7 @@ class ChatGPTLoginTest(TestCase):
 
     def test_login_starts_with_pkce_and_rejects_wrong_state(self):
         started = self.client.post("/api/assistant/auth/start", data="{}", content_type="application/json",
-                                   HTTP_HOST="127.0.0.1:8765", SERVER_PORT="8765", **self.csrf)
+                                   HTTP_HOST="127.0.0.1:8765", SERVER_PORT="8000", **self.csrf)
         self.assertEqual(started.status_code, 200)
         params = parse_qs(urlparse(started.json()["url"]).query)
         self.assertEqual(params["client_id"], ["dynamic_agent_client"])

@@ -6,6 +6,8 @@ import tempfile
 from pathlib import Path
 from shutil import which
 
+from django.conf import settings
+
 
 ALLOWED_MATH_COMMANDS = {
     "frac", "dfrac", "tfrac", "sqrt", "cdot", "times", "div", "pm", "mp",
@@ -83,6 +85,7 @@ def format_body(value):
 
 def build_source(worksheet, include_answers=False, figure_paths=None):
     title = escape_text(worksheet.title)
+    font = getattr(settings, "TUTOR_PDF_FONT", "Arial")
     owner = getattr(worksheet, "school_class", None) or worksheet.student
     owner_label = "Класс" if getattr(worksheet, "school_class_id", None) else "Ученик"
     label = "Домашняя работа" if worksheet.kind == "homework" else "Задания на урок"
@@ -97,8 +100,8 @@ def build_source(worksheet, include_answers=False, figure_paths=None):
               r"\usepackage[russian]{babel}",
               r"\usepackage{needspace,fancyhdr}",
               r"\usepackage[left=19mm,right=19mm,top=18mm,bottom=22mm,footskip=11mm]{geometry}",
-              r"\setmainfont{Arial}",
-              r"\setsansfont{Arial}", r"\definecolor{forest}{HTML}{285A43}",
+              rf"\setmainfont{{{font}}}",
+              rf"\setsansfont{{{font}}}", r"\definecolor{forest}{HTML}{285A43}",
               r"\definecolor{muted}{HTML}{66716A}", r"\definecolor{rulegray}{HTML}{DCE3DD}",
               r"\DeclareMathSizes{12}{15}{10.5}{8}",
               r"\linespread{1.12}", r"\setlength{\parindent}{0pt}", r"\setlength{\parskip}{5pt}",

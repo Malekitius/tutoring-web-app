@@ -187,8 +187,7 @@ def start(request) -> str:
     state = secrets.token_urlsafe(32)
     nonce = secrets.token_urlsafe(32)
     verifier = secrets.token_urlsafe(64)
-    port = request.get_port()
-    redirect_uri = f"http://127.0.0.1:{port}/api/assistant/auth/callback/"
+    redirect_uri = f"http://{request.get_host()}/api/assistant/auth/callback/"
     client_id = record.get("client_id") or "dynamic_agent_client"
     request.session["assistant_oauth"] = {
         "state": state, "nonce": nonce, "verifier": verifier,
